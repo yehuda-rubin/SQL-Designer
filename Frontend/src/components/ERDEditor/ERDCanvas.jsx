@@ -34,7 +34,7 @@ const ERDCanvas = () => {
   const [selectedEntity, setSelectedEntity] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
 
-  // ✅ סנכרון בין store ל-Canvas
+  // סנכרון בין store ל-Canvas
   useEffect(() => {
     setNodes(storeNodes);
   }, [storeNodes, setNodes]);
@@ -60,6 +60,37 @@ const ERDCanvas = () => {
     [edges, onEdgesChange, setStoreEdges]
   );
 
+  // פונקציה ליצירת edges אוטומטית מקשר לישויות
+  const createEdgesFromRelationship = useCallback(
+    (relationshipId, connections) => {
+      const newEdges = [];
+      
+      connections.forEach((conn, index) => {
+        if (conn.entityId || conn.entityName) {
+          const targetId = conn.entityId || conn.entityName;
+          
+          const newEdge = {
+            id: `e-${relationshipId}-${targetId}-${index}-${Date.now()}`,
+            source: relationshipId,
+            target: targetId,
+            type: 'custom',
+            data: {
+              cardinality: conn.cardinality || '1',
+              label: '',
+            },
+            animated: false,
+            style: { strokeWidth: 2 },
+          };
+          
+          newEdges.push(newEdge);
+        }
+      });
+      
+      return newEdges;
+    },
+    []
+  );
+
   // בדיקה אם חיבור מותר (קשר לא יכול להתחבר לקשר אחר)
   const isValidConnection = useCallback(
     (connection) => {
@@ -77,10 +108,19 @@ const ERDCanvas = () => {
     [nodes]
   );
 
-  // חיבור בין ישויות/קשרים (יצירת edge)
+  // חיבור בין ישויות/קשרים (יצירת edge ידני - רק לישויות)
   const onConnect = useCallback(
     (params) => {
       if (!isValidConnection(params)) {
+        return;
+      }
+
+      const sourceNode = nodes.find((n) => n.id === params.source);
+      const targetNode = nodes.find((n) => n.id === params.target);
+
+      // אם המקור או היעד הם קשר - לא מאפשרים יצירת edge ידני
+      if (sourceNode?.type === 'relationship' || targetNode?.type === 'relationship') {
+        alert('קשרים מתנהלים דרך PropertyPanel בלבד!');
         return;
       }
 
@@ -89,7 +129,7 @@ const ERDCanvas = () => {
         id: `e${params.source}-${params.target}-${Date.now()}`,
         type: 'custom',
         data: {
-          cardinality: 'optional', // ברירת מחדל: 0..1 (חץ רגיל)
+          cardinality: '1', // ברירת מחדל
           label: '1:N',
         },
         animated: true,
@@ -101,7 +141,7 @@ const ERDCanvas = () => {
       setEdges((eds) => addEdge(newEdge, eds));
       setStoreEdges([...edges, newEdge]);
     },
-    [edges, setEdges, setStoreEdges, isValidConnection]
+    [edges, setEdges, setStoreEdges, isValidConnection, nodes]
   );
 
   // לחיצה על הקנבס
@@ -131,6 +171,9 @@ const ERDCanvas = () => {
   // שמירת שינויים בישות/קשר
   const handleSaveEntity = useCallback(
     (nodeId, data) => {
+      const node = nodes.find(n => n.id === nodeId);
+      
+      // עדכון ה-node
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === nodeId) {
@@ -146,6 +189,22 @@ const ERDCanvas = () => {
         })
       );
       
+      // אם זה קשר עם connections, ליצור edges אוטומטית
+      if (node?.type === 'relationship' && data.connections) {
+        // מחיקת edges ישנים של הקשר
+        const edgesWithoutRelationship = edges.filter(
+          (edge) => edge.source !== nodeId && edge.target !== nodeId
+        );
+        
+        // יצירת edges חדשים
+        const newEdges = createEdgesFromRelationship(nodeId, data.connections);
+        
+        // עדכון edges
+        const allEdges = [...edgesWithoutRelationship, ...newEdges];
+        setEdges(allEdges);
+        setStoreEdges(allEdges);
+      }
+      
       // עדכון ה-store
       const updatedNodes = nodes.map((node) =>
         node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
@@ -153,7 +212,7 @@ const ERDCanvas = () => {
       setStoreNodes(updatedNodes);
       setSelectedEntity(null);
     },
-    [nodes, setNodes, setStoreNodes]
+    [nodes, edges, setNodes, setEdges, setStoreNodes, setStoreEdges, createEdgesFromRelationship]
   );
 
   // עדכון edge (cardinality ו-label)
