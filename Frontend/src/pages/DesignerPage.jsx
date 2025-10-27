@@ -31,6 +31,22 @@ const DesignerPage = () => {
     addNode(newNode);
   };
 
+  const handleAddRelationship = () => {
+    const newNode = {
+      id: `rel-${Date.now()}`,
+      type: 'relationship',
+      position: {
+        x: Math.random() * 400 + 100,
+        y: Math.random() * 300 + 100,
+      },
+      data: {
+        name: 'קשר חדש',
+        attributes: [],
+      },
+    };
+    addNode(newNode);
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -70,6 +86,7 @@ const DesignerPage = () => {
       <Toolbar
         projectName={currentProject.name}
         onAddEntity={handleAddEntity}
+        onAddRelationship={handleAddRelationship}
         onSave={handleSave}
         isSaving={isSaving}
       />

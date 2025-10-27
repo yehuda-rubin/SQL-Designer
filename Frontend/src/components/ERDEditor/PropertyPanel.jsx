@@ -5,6 +5,7 @@ import Button from '../Common/Button';
 const PropertyPanel = ({ entity, onClose, onSave }) => {
   const [name, setName] = useState(entity?.data.name || '');
   const [attributes, setAttributes] = useState(entity?.data.attributes || []);
+  const isRelationship = entity?.type === 'relationship';
 
   useEffect(() => {
     if (entity) {
@@ -55,7 +56,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
 
   const handleSave = () => {
     if (!name.trim()) {
-      alert('יש להזין שם לישות');
+      alert(isRelationship ? 'יש להזין שם לקשר' : 'יש להזין שם לישות');
       return;
     }
 
@@ -68,8 +69,14 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
   return (
     <div className="fixed left-0 top-16 bottom-0 w-96 bg-white shadow-2xl border-r border-gray-200 z-40 overflow-y-auto">
       {/* Header */}
-      <div className="sticky top-0 bg-primary-600 text-white p-4 flex items-center justify-between">
-        <h3 className="text-lg font-bold">עריכת ישות</h3>
+      <div 
+        className={`sticky top-0 text-white p-4 flex items-center justify-between ${
+          isRelationship ? 'bg-purple-600' : 'bg-primary-600'
+        }`}
+      >
+        <h3 className="text-lg font-bold">
+          {isRelationship ? 'עריכת קשר' : 'עריכת ישות'}
+        </h3>
         <button
           onClick={onClose}
           className="text-white hover:text-gray-200 transition-colors"
@@ -79,16 +86,16 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
       </div>
 
       <div className="p-6 space-y-6">
-        {/* Entity Name */}
+        {/* Entity/Relationship Name */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            שם הישות
+            {isRelationship ? 'שם הקשר' : 'שם הישות'}
           </label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="לדוגמה: Student"
+            placeholder={isRelationship ? 'לדוגמה: רשום' : 'לדוגמה: Student'}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
         </div>
@@ -96,7 +103,9 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
         {/* Attributes */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <label className="text-sm font-medium text-gray-700">מאפיינים</label>
+            <label className="text-sm font-medium text-gray-700">
+              {isRelationship ? 'תכונות הקשר' : 'מאפיינים'}
+            </label>
             <Button onClick={addAttribute} variant="ghost" size="sm" icon={Plus}>
               הוסף
             </Button>
@@ -105,20 +114,24 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
           <div className="space-y-3">
             {attributes.length === 0 ? (
               <div className="text-center py-8 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-lg">
-                אין מאפיינים עדיין
+                {isRelationship ? 'אין תכונות עדיין' : 'אין מאפיינים עדיין'}
               </div>
             ) : (
               attributes.map((attr, index) => (
                 <div
                   key={index}
-                  className="bg-gray-50 rounded-lg p-3 border border-gray-200 space-y-2"
+                  className={`rounded-lg p-3 border space-y-2 ${
+                    isRelationship 
+                      ? 'bg-purple-50 border-purple-200' 
+                      : 'bg-gray-50 border-gray-200'
+                  }`}
                 >
                   {/* Attribute Name */}
                   <input
                     type="text"
                     value={attr.name}
                     onChange={(e) => updateAttribute(index, 'name', e.target.value)}
-                    placeholder="שם המאפיין"
+                    placeholder={isRelationship ? 'שם התכונה' : 'שם המאפיין'}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
                   />
 
@@ -151,7 +164,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
                     <button
                       onClick={() => deleteAttribute(index)}
                       className="p-2 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"
-                      title="מחק מאפיין"
+                      title={isRelationship ? 'מחק תכונה' : 'מחק מאפיין'}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -161,6 +174,15 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
             )}
           </div>
         </div>
+
+        {/* Hint for Relationships */}
+        {isRelationship && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <p className="text-sm text-purple-800">
+              💡 <strong>טיפ:</strong> קשר יכול להכיל תכונות משלו (לדוגמה: תאריך רישום, ציון וכו')
+            </p>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex gap-3 pt-4 border-t">

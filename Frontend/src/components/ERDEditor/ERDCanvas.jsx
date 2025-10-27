@@ -11,20 +11,19 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import EntityNode from './EntityNode';
+import RelationshipNode from './RelationshipNode';
+import CustomEdge from './CustomEdge';
 import PropertyPanel from './PropertyPanel';
+import EdgeEditModal from './EdgeEditModal';
 import useProjectStore from '../../store/projectStore';
 
 const nodeTypes = {
   entity: EntityNode,
+  relationship: RelationshipNode,
 };
 
-const edgeOptions = {
-  animated: true,
-  style: { stroke: '#3b82f6', strokeWidth: 2 },
-  markerEnd: {
-    type: MarkerType.ArrowClosed,
-    color: '#3b82f6',
-  },
+const edgeTypes = {
+  custom: CustomEdge,
 };
 
 const ERDCanvas = () => {
@@ -33,8 +32,9 @@ const ERDCanvas = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState(storeNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(storeEdges);
   const [selectedEntity, setSelectedEntity] = useState(null);
+  const [selectedEdge, setSelectedEdge] = useState(null);
 
-  // ✅ תיקון - סנכרון בין store ל-Canvas
+  // ✅ סנכרון בין store ל-Canvas
   useEffect(() => {
     setNodes(storeNodes);
   }, [storeNodes, setNodes]);
@@ -60,38 +60,75 @@ const ERDCanvas = () => {
     [edges, onEdgesChange, setStoreEdges]
   );
 
-  // חיבור בין ישויות (יצירת קשר)
+  // בדיקה אם חיבור מותר (קשר לא יכול להתחבר לקשר אחר)
+  const isValidConnection = useCallback(
+    (connection) => {
+      const sourceNode = nodes.find((n) => n.id === connection.source);
+      const targetNode = nodes.find((n) => n.id === connection.target);
+
+      // אם שני הצדדים הם קשרים - לא מותר
+      if (sourceNode?.type === 'relationship' && targetNode?.type === 'relationship') {
+        alert('לא ניתן לחבר קשר לקשר אחר!');
+        return false;
+      }
+
+      return true;
+    },
+    [nodes]
+  );
+
+  // חיבור בין ישויות/קשרים (יצירת edge)
   const onConnect = useCallback(
     (params) => {
+      if (!isValidConnection(params)) {
+        return;
+      }
+
       const newEdge = {
         ...params,
-        ...edgeOptions,
         id: `e${params.source}-${params.target}-${Date.now()}`,
-        label: '1:N',
-        type: 'smoothstep',
+        type: 'custom',
+        data: {
+          cardinality: 'optional', // ברירת מחדל: 0..1 (חץ רגיל)
+          label: '1:N',
+        },
+        animated: true,
+        style: { strokeWidth: 2 },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+        },
       };
       setEdges((eds) => addEdge(newEdge, eds));
       setStoreEdges([...edges, newEdge]);
     },
-    [edges, setEdges, setStoreEdges]
+    [edges, setEdges, setStoreEdges, isValidConnection]
   );
 
   // לחיצה על הקנבס
   const onPaneClick = useCallback(() => {
     setSelectedEntity(null);
+    setSelectedEdge(null);
   }, []);
 
   // לחיצה על node
   const onNodeClick = useCallback((event, node) => {
     setSelectedEntity(node);
+    setSelectedEdge(null);
   }, []);
 
   // לחיצה כפולה על node
   const onNodeDoubleClick = useCallback((event, node) => {
     setSelectedEntity(node);
+    setSelectedEdge(null);
   }, []);
 
-  // שמירת שינויים בישות
+  // לחיצה על edge
+  const onEdgeClick = useCallback((event, edge) => {
+    setSelectedEdge(edge);
+    setSelectedEntity(null);
+  }, []);
+
+  // שמירת שינויים בישות/קשר
   const handleSaveEntity = useCallback(
     (nodeId, data) => {
       setNodes((nds) =>
@@ -119,21 +156,51 @@ const ERDCanvas = () => {
     [nodes, setNodes, setStoreNodes]
   );
 
-  // מחיקת ישות
+  // עדכון edge (cardinality ו-label)
+  const handleSaveEdge = useCallback(
+    (edgeId, data) => {
+      setEdges((eds) =>
+        eds.map((edge) => {
+          if (edge.id === edgeId) {
+            return {
+              ...edge,
+              data: {
+                ...edge.data,
+                ...data,
+              },
+            };
+          }
+          return edge;
+        })
+      );
+
+      const updatedEdges = edges.map((edge) =>
+        edge.id === edgeId ? { ...edge, data: { ...edge.data, ...data } } : edge
+      );
+      setStoreEdges(updatedEdges);
+      setSelectedEdge(null);
+    },
+    [edges, setEdges, setStoreEdges]
+  );
+
+  // מחיקת ישות/קשר
   const handleDeleteEntity = useCallback(
     (nodeId) => {
-      if (window.confirm('האם אתה בטוח שברצונך למחוק ישות זו?')) {
+      const node = nodes.find((n) => n.id === nodeId);
+      const typeName = node?.type === 'relationship' ? 'קשר' : 'ישות';
+      
+      if (window.confirm(`האם אתה בטוח שברצונך למחוק ${typeName} זה?`)) {
         deleteNode(nodeId);
         setNodes((nds) => nds.filter((node) => node.id !== nodeId));
         setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
         setSelectedEntity(null);
       }
     },
-    [deleteNode, setNodes, setEdges]
+    [nodes, deleteNode, setNodes, setEdges]
   );
 
-  // הוספת onDelete לכל node
-  const nodesWithDelete = nodes.map((node) => ({
+  // הוספת onDelete ו-onEdit לכל node
+  const nodesWithActions = nodes.map((node) => ({
     ...node,
     data: {
       ...node.data,
@@ -145,7 +212,7 @@ const ERDCanvas = () => {
   return (
     <div className="w-full h-full relative">
       <ReactFlow
-        nodes={nodesWithDelete}
+        nodes={nodesWithActions}
         edges={edges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
@@ -153,8 +220,10 @@ const ERDCanvas = () => {
         onPaneClick={onPaneClick}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onEdgeClick={onEdgeClick}
         nodeTypes={nodeTypes}
-        defaultEdgeOptions={edgeOptions}
+        edgeTypes={edgeTypes}
+        isValidConnection={isValidConnection}
         fitView
         attributionPosition="bottom-left"
       >
@@ -162,17 +231,31 @@ const ERDCanvas = () => {
         <Controls />
         <MiniMap
           nodeColor={(node) => {
-            return '#3b82f6';
+            return node.type === 'relationship' ? '#9333ea' : '#3b82f6';
           }}
           maskColor="rgba(0, 0, 0, 0.1)"
         />
       </ReactFlow>
 
-      {/* Property Panel */}
+      {/* Property Panel for Entity/Relationship */}
       <PropertyPanel
         entity={selectedEntity}
         onClose={() => setSelectedEntity(null)}
         onSave={handleSaveEntity}
+      />
+
+      {/* Edge Edit Modal */}
+      <EdgeEditModal
+        edge={selectedEdge}
+        onClose={() => setSelectedEdge(null)}
+        onSave={handleSaveEdge}
+        onDelete={(edgeId) => {
+          if (window.confirm('האם אתה בטוח שברצונך למחוק קשר זה?')) {
+            setEdges((eds) => eds.filter((e) => e.id !== edgeId));
+            setStoreEdges(edges.filter((e) => e.id !== edgeId));
+            setSelectedEdge(null);
+          }
+        }}
       />
     </div>
   );
