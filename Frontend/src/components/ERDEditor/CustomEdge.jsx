@@ -22,26 +22,26 @@ const CustomEdge = ({
     targetPosition,
   });
 
-  // Cardinality לפי אולמן: '1', '0..1', 'N'
+  // Cardinality based on Ullman notation: '1', '0..1', 'N'
   const cardinality = data?.cardinality || '1';
   const label = data?.label || '';
 
-  // חישוב זווית הקו לצורך הצבת הסימנים
+  // Calculate the line angle for positioning the symbols
   const angle = Math.atan2(targetY - sourceY, targetX - sourceX);
   
-  // קונפיגורציה לפי סוג הקשר
+  // Configuration based on the relationship type (Ullman/Crow's Foot style symbols)
   const cardinalityConfig = {
     '1': {
       symbol: '|',
-      color: '#ef4444', // אדום לחובה
+      color: '#ef4444', // Red for mandatory (1)
     },
     '0..1': {
       symbol: '○',
-      color: '#3b82f6', // כחול לאופציונלי
+      color: '#3b82f6', // Blue for optional (0 or 1)
     },
     'N': {
       symbol: '<',
-      color: '#10b981', // ירוק לרבים
+      color: '#10b981', // Green for many (N)
     },
   };
 
@@ -49,7 +49,7 @@ const CustomEdge = ({
 
   return (
     <>
-      {/* הקו הבסיסי */}
+      {/* The base edge line */}
       <BaseEdge
         id={id}
         path={edgePath}
@@ -61,9 +61,9 @@ const CustomEdge = ({
         }}
       />
 
-      {/* סימון אולמן בסוף הקו */}
+      {/* Ullman-style symbol at the target end of the line */}
       {cardinality === '1' && (
-        // קו מאונך —|
+        // Mandatory One (Vertical Bar) —|
         <g transform={`translate(${targetX},${targetY}) rotate(${angle * 180 / Math.PI})`}>
           <line
             x1={-10}
@@ -78,7 +78,7 @@ const CustomEdge = ({
       )}
 
       {cardinality === '0..1' && (
-        // עיגול —○
+        // Optional One (Circle) —○
         <circle
           cx={targetX}
           cy={targetY}
@@ -90,7 +90,7 @@ const CustomEdge = ({
       )}
 
       {cardinality === 'N' && (
-        // רגלי עוף —< (שלוש קווים)
+        // Mandatory Many (Crow's Foot) —< (Three lines)
         <g transform={`translate(${targetX},${targetY}) rotate(${angle * 180 / Math.PI})`}>
           <line x1={-12} y1={0} x2={-20} y2={-6} stroke={config.color} strokeWidth={2} strokeLinecap="round" />
           <line x1={-12} y1={0} x2={-20} y2={0} stroke={config.color} strokeWidth={2} strokeLinecap="round" />
@@ -98,7 +98,7 @@ const CustomEdge = ({
         </g>
       )}
 
-      {/* Label */}
+      {/* Label Renderer */}
       {label && (
         <EdgeLabelRenderer>
           <div
