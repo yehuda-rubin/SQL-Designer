@@ -9,7 +9,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
   const [connections, setConnections] = useState(entity?.data.connections || []);
   const isRelationship = entity?.type === 'relationship';
   
-  // קבלת רשימת כל הישויות מה-store
+  // Get all entities from the store
   const { nodes } = useProjectStore();
   const availableEntities = nodes.filter(n => n.type === 'entity');
 
@@ -18,10 +18,10 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
       setName(entity.data.name || '');
       setAttributes(entity.data.attributes || []);
       
-      // אם זה קשר וצריך לאתחל connections
+      // If this is a relationship, initialize connections
       if (entity.type === 'relationship') {
         const existingConnections = entity.data.connections || [];
-        // אם אין connections כלל, נתחיל עם 2 ריקים
+        // If no connections exist, start with two empty ones
         if (existingConnections.length === 0) {
           setConnections([
             { entityId: '', entityName: '', cardinality: '1' },
@@ -48,12 +48,12 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
   ];
 
   const cardinalityOptions = [
-    { value: '1', label: 'חובה פעם אחת (1)', symbol: '—|' },
-    { value: '0..1', label: 'מקסימום 1 (0..1)', symbol: '—○' },
-    { value: 'N', label: 'רבים (N)', symbol: '—<' },
+    { value: '1', label: 'Mandatory once (1)', symbol: '—|' },
+    { value: '0..1', label: 'At most once (0..1)', symbol: '—○' },
+    { value: 'N', label: 'Many (N)', symbol: '—<' },
   ];
 
-  // פונקציות לניהול Attributes
+  // Functions for managing Attributes
   const addAttribute = () => {
     setAttributes([
       ...attributes,
@@ -81,7 +81,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
     setAttributes(updated);
   };
 
-  // פונקציות לניהול Connections (רק לקשרים)
+  // Functions for managing Connections (only for relationships)
   const addConnection = () => {
     setConnections([
       ...connections,
@@ -93,7 +93,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
     const updated = [...connections];
     
     if (field === 'entityId') {
-      // אם בחרו ישות מהרשימה
+      // When an entity is selected from the list
       const selectedEntity = availableEntities.find(e => e.id === value);
       updated[index] = {
         ...updated[index],
@@ -101,11 +101,11 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
         entityName: selectedEntity ? selectedEntity.data.name : ''
       };
     } else if (field === 'entityName') {
-      // אם הקלידו שם ידנית
+      // When typing an entity name manually
       updated[index] = {
         ...updated[index],
         entityName: value,
-        entityId: '' // נמחק את ה-ID אם הקלידו ידנית
+        entityId: '' // Remove ID if entered manually
       };
     } else {
       updated[index] = { ...updated[index], [field]: value };
@@ -129,7 +129,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
       attributes: attributes.filter((attr) => attr.name.trim()),
     };
 
-    // אם זה קשר, נוסיף את החיבורים
+    // If this is a relationship, include the connections
     if (isRelationship) {
       dataToSave.connections = connections;
     }
@@ -171,15 +171,15 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
           />
         </div>
 
-        {/* Connections Section - רק לקשרים */}
+        {/* Connections Section - only for relationships */}
         {isRelationship && (
           <div>
             <div className="flex items-center justify-between mb-3">
               <label className="text-sm font-medium text-gray-700">
-                חיבורי ישויות
+                Entity Connections
               </label>
               <Button onClick={addConnection} variant="ghost" size="sm" icon={Plus}>
-                הוסף ישות
+                Add Entity
               </Button>
             </div>
 
@@ -189,33 +189,33 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
                   key={index}
                   className="p-4 bg-purple-50 border-2 border-purple-200 rounded-lg space-y-3"
                 >
-                  {/* כותרת + כפתור מחיקה */}
+                  {/* Header + Delete button */}
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-purple-800 text-sm">
-                      ישות #{index + 1}
+                      Entity #{index + 1}
                     </span>
                     {connections.length > 0 && (
                       <button
                         onClick={() => deleteConnection(index)}
                         className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-100"
-                        title="מחק חיבור"
+                        title="Delete Connection"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>
 
-                  {/* בחירת ישות - Dropdown */}
+                  {/* Select Entity - Dropdown */}
                   <div>
                     <label className="block text-xs text-gray-600 mb-1">
-                      בחר מרשימה:
+                      Choose from list:
                     </label>
                     <select
                       value={conn.entityId}
                       onChange={(e) => updateConnection(index, 'entityId', e.target.value)}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
                     >
-                      <option value="">-- בחר ישות --</option>
+                      <option value="">-- Select Entity --</option>
                       {availableEntities.map((entity) => (
                         <option key={entity.id} value={entity.id}>
                           {entity.data.name}
@@ -224,16 +224,16 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
                     </select>
                   </div>
 
-                  {/* הקלדת שם ישות ידנית */}
+                  {/* Manual Entity Name Input */}
                   <div>
                     <label className="block text-xs text-gray-600 mb-1">
-                      או הקלד שם ישות:
+                      Or type entity name:
                     </label>
                     <input
                       type="text"
                       value={conn.entityName}
                       onChange={(e) => updateConnection(index, 'entityName', e.target.value)}
-                      placeholder="לדוגמה: Student"
+                      placeholder="e.g., Student"
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
@@ -241,7 +241,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
                   {/* Cardinality */}
                   <div>
                     <label className="block text-xs text-gray-600 mb-1">
-                      Cardinality (שיטת אולמן):
+                      Cardinality (Ullman notation):
                     </label>
                     <select
                       value={conn.cardinality}
@@ -261,7 +261,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
 
             {connections.length === 0 && (
               <div className="text-center py-8 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-lg">
-                אין חיבורים עדיין
+                No connections yet
               </div>
             )}
           </div>
@@ -271,17 +271,17 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
         <div>
           <div className="flex items-center justify-between mb-3">
             <label className="text-sm font-medium text-gray-700">
-              {isRelationship ? 'תכונות הקשר' : 'מאפיינים'}
+              {isRelationship ? 'Relationship Attributes' : 'Attributes'}
             </label>
             <Button onClick={addAttribute} variant="ghost" size="sm" icon={Plus}>
-              הוסף
+              Add
             </Button>
           </div>
 
           <div className="space-y-3">
             {attributes.length === 0 ? (
               <div className="text-center py-8 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-lg">
-                {isRelationship ? 'אין תכונות עדיין' : 'אין מאפיינים עדיין'}
+                {isRelationship ? 'No attributes yet' : 'No attributes yet'}
               </div>
             ) : (
               attributes.map((attr, index) => (
@@ -298,7 +298,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
                     type="text"
                     value={attr.name}
                     onChange={(e) => updateAttribute(index, 'name', e.target.value)}
-                    placeholder={isRelationship ? 'שם התכונה' : 'שם המאפיין'}
+                    placeholder={isRelationship ? 'Attribute Name' : 'Attribute Name'}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
                   />
 
@@ -323,7 +323,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
                           ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
                           : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
                       }`}
-                      title="מפתח ראשי"
+                      title="Primary Key"
                     >
                       <Key className="w-4 h-4" />
                     </button>
@@ -331,7 +331,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
                     <button
                       onClick={() => deleteAttribute(index)}
                       className="p-2 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"
-                      title={isRelationship ? 'מחק תכונה' : 'מחק מאפיין'}
+                      title={isRelationship ? 'Delete Attribute' : 'Delete Attribute'}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -346,7 +346,7 @@ const PropertyPanel = ({ entity, onClose, onSave }) => {
         {isRelationship && (
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
             <p className="text-sm text-purple-800">
-              💡 <strong>טיפ:</strong> בחר ישויות מהרשימה או הקלד שמות ידנית. הקווים יווצרו אוטומטית!
+              💡 <strong>Tip:</strong> Select entities from the list or type their names manually. Connections will be created automatically!
             </p>
           </div>
         )}
