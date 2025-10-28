@@ -7,13 +7,13 @@ const RelationshipNode = ({ data, selected }) => {
 
   return (
     <div className="relative" onDoubleClick={onEdit}>
-      {/* Handles - נקודות חיבור */}
+      {/* Handles - connection points */}
       <Handle type="target" position={Position.Top} className="w-3 h-3 !bg-purple-500" />
       <Handle type="source" position={Position.Bottom} className="w-3 h-3 !bg-purple-500" />
       <Handle type="source" position={Position.Left} className="w-3 h-3 !bg-purple-500" />
       <Handle type="source" position={Position.Right} className="w-3 h-3 !bg-purple-500" />
 
-      {/* מעויין - Relationship */}
+      {/* Diamond shape - Relationship */}
       <div
         className={`relative transform rotate-45 min-w-[140px] min-h-[140px] transition-all duration-200 ${
           selected ? 'shadow-2xl scale-110' : 'shadow-lg'
@@ -22,14 +22,14 @@ const RelationshipNode = ({ data, selected }) => {
           transformOrigin: 'center',
         }}
       >
-        {/* רקע מעויין */}
+        {/* Diamond background */}
         <div
           className={`absolute inset-0 bg-gradient-to-br from-purple-500 to-purple-600 border-4 ${
             selected ? 'border-purple-800' : 'border-purple-400'
           }`}
         />
 
-        {/* כפתור מחיקה */}
+        {/* Delete button */}
         {onDelete && (
           <button
             onClick={(e) => {
@@ -42,29 +42,29 @@ const RelationshipNode = ({ data, selected }) => {
           </button>
         )}
 
-        {/* תוכן - מסובב חזרה */}
+        {/* Inner content - rotated back */}
         <div
           className="absolute inset-0 flex flex-col items-center justify-center p-4 transform -rotate-45"
           style={{ transformOrigin: 'center' }}
         >
-          {/* אייקון */}
+          {/* Icon */}
           <Link className="w-6 h-6 text-white mb-2" />
           
-          {/* שם הקשר */}
+          {/* Relationship name */}
           <span className="font-bold text-white text-center text-sm leading-tight max-w-full overflow-hidden">
-            {name || 'קשר חדש'}
+            {name || 'New Relationship'}
           </span>
 
-          {/* מספר תכונות */}
+          {/* Attributes count */}
           {attributes.length > 0 && (
             <div className="mt-2 bg-white/20 backdrop-blur-sm px-2 py-1 rounded text-xs text-white">
-              {attributes.length} תכונות
+              {attributes.length} Attributes
             </div>
           )}
         </div>
       </div>
 
-      {/* תכונות מתחת למעויין */}
+      {/* Attributes section below the diamond */}
       {attributes.length > 0 && (
         <div className="absolute top-[160px] left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-md border-2 border-purple-200 p-2 min-w-[180px] z-20">
           <div className="space-y-1">
@@ -86,7 +86,7 @@ const RelationshipNode = ({ data, selected }) => {
             ))}
             {attributes.length > 3 && (
               <div className="text-center text-gray-400 text-xs">
-                +{attributes.length - 3} עוד...
+                +{attributes.length - 3} more...
               </div>
             )}
           </div>
