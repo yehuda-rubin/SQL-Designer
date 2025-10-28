@@ -6,27 +6,27 @@ import os
 
 
 def create_app(config_class=Config):
-    """יצירת אפליקציית Flask"""
+    """Create the Flask application"""
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    # אתחול הרחבות
+    # Initialize extensions
     db.init_app(app)
     CORS(app, origins=config_class.CORS_ORIGINS)
 
-    # יצירת תיקיית instance אם לא קיימת
+    # Create the instance folder if it doesn't exist
     instance_path = os.path.join(app.root_path, 'instance')
     os.makedirs(instance_path, exist_ok=True)
 
-    # יצירת טבלאות בבסיס הנתונים
+    # Create database tables
     with app.app_context():
         db.create_all()
 
-    # רישום blueprints
+    # Register blueprints
     from routes.projects import projects_bp
     app.register_blueprint(projects_bp, url_prefix='/api')
 
-    # Route בסיסי לבדיקת בריאות השרת
+    # Basic route for server health check
     @app.route('/api/health', methods=['GET'])
     def health_check():
         return jsonify({
@@ -35,7 +35,7 @@ def create_app(config_class=Config):
             'version': '1.0.0'
         }), 200
 
-    # טיפול בשגיאות 404
+    # 404 error handler
     @app.errorhandler(404)
     def not_found(error):
         return jsonify({
@@ -43,7 +43,7 @@ def create_app(config_class=Config):
             'error': 'Resource not found'
         }), 404
 
-    # טיפול בשגיאות 500
+    # 500 error handler
     @app.errorhandler(500)
     def internal_error(error):
         db.session.rollback()
