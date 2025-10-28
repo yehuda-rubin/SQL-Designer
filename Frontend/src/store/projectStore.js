@@ -10,7 +10,7 @@ const useProjectStore = create((set, get) => ({
   isLoading: false,
   error: null,
 
-  // Actions - פרויקטים
+  // Actions - Projects
   fetchProjects: async () => {
     set({ isLoading: true, error: null });
     try {
@@ -134,7 +134,7 @@ const useProjectStore = create((set, get) => ({
     }));
   },
 
-  // ניקוי הפרויקט הנוכחי
+  // Clear current project
   clearCurrentProject: () => {
     set({
       currentProject: null,
@@ -143,7 +143,7 @@ const useProjectStore = create((set, get) => ({
     });
   },
 
-  // עדכון שם הפרויקט
+  // Update project name
   updateProjectName: (name) => {
     set((state) => ({
       currentProject: state.currentProject
