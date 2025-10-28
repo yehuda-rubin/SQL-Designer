@@ -34,7 +34,7 @@ const ERDCanvas = () => {
   const [selectedEntity, setSelectedEntity] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
 
-  // סנכרון בין store ל-Canvas
+  // Sync store with canvas
   useEffect(() => {
     setNodes(storeNodes);
   }, [storeNodes, setNodes]);
@@ -43,7 +43,7 @@ const ERDCanvas = () => {
     setEdges(storeEdges);
   }, [storeEdges, setEdges]);
 
-  // עדכון ה-store כשמשנים nodes/edges
+  // Update store when nodes/edges change
   const handleNodesChange = useCallback(
     (changes) => {
       onNodesChange(changes);
@@ -60,7 +60,7 @@ const ERDCanvas = () => {
     [edges, onEdgesChange, setStoreEdges]
   );
 
-  // פונקציה ליצירת edges אוטומטית מקשר לישויות
+  // Automatically create edges from relationship connections
   const createEdgesFromRelationship = useCallback(
     (relationshipId, connections) => {
       const newEdges = [];
@@ -91,15 +91,15 @@ const ERDCanvas = () => {
     []
   );
 
-  // בדיקה אם חיבור מותר (קשר לא יכול להתחבר לקשר אחר)
+  // Validate connection (relationship cannot connect to another relationship)
   const isValidConnection = useCallback(
     (connection) => {
       const sourceNode = nodes.find((n) => n.id === connection.source);
       const targetNode = nodes.find((n) => n.id === connection.target);
 
-      // אם שני הצדדים הם קשרים - לא מותר
+      // Prevent relationship-to-relationship connection
       if (sourceNode?.type === 'relationship' && targetNode?.type === 'relationship') {
-        alert('לא ניתן לחבר קשר לקשר אחר!');
+        alert('You cannot connect one relationship to another!');
         return false;
       }
 
@@ -108,7 +108,7 @@ const ERDCanvas = () => {
     [nodes]
   );
 
-  // חיבור בין ישויות/קשרים (יצירת edge ידני - רק לישויות)
+  // Manual edge creation (only between entities)
   const onConnect = useCallback(
     (params) => {
       if (!isValidConnection(params)) {
@@ -118,9 +118,9 @@ const ERDCanvas = () => {
       const sourceNode = nodes.find((n) => n.id === params.source);
       const targetNode = nodes.find((n) => n.id === params.target);
 
-      // אם המקור או היעד הם קשר - לא מאפשרים יצירת edge ידני
+      // Prevent manual edge creation if source or target is a relationship
       if (sourceNode?.type === 'relationship' || targetNode?.type === 'relationship') {
-        alert('קשרים מתנהלים דרך PropertyPanel בלבד!');
+        alert('Relationships are managed only via the PropertyPanel!');
         return;
       }
 
@@ -129,7 +129,7 @@ const ERDCanvas = () => {
         id: `e${params.source}-${params.target}-${Date.now()}`,
         type: 'custom',
         data: {
-          cardinality: '1', // ברירת מחדל
+          cardinality: '1', // default value
           label: '1:N',
         },
         animated: true,
@@ -144,36 +144,36 @@ const ERDCanvas = () => {
     [edges, setEdges, setStoreEdges, isValidConnection, nodes]
   );
 
-  // לחיצה על הקנבס
+  // Canvas click
   const onPaneClick = useCallback(() => {
     setSelectedEntity(null);
     setSelectedEdge(null);
   }, []);
 
-  // לחיצה על node
+  // Node click
   const onNodeClick = useCallback((event, node) => {
     setSelectedEntity(node);
     setSelectedEdge(null);
   }, []);
 
-  // לחיצה כפולה על node
+  // Node double-click
   const onNodeDoubleClick = useCallback((event, node) => {
     setSelectedEntity(node);
     setSelectedEdge(null);
   }, []);
 
-  // לחיצה על edge
+  // Edge click
   const onEdgeClick = useCallback((event, edge) => {
     setSelectedEdge(edge);
     setSelectedEntity(null);
   }, []);
 
-  // שמירת שינויים בישות/קשר
+  // Save entity/relationship changes
   const handleSaveEntity = useCallback(
     (nodeId, data) => {
       const node = nodes.find(n => n.id === nodeId);
       
-      // עדכון ה-node
+      // Update node data
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === nodeId) {
@@ -189,23 +189,23 @@ const ERDCanvas = () => {
         })
       );
       
-      // אם זה קשר עם connections, ליצור edges אוטומטית
+      // If it's a relationship with connections, generate edges automatically
       if (node?.type === 'relationship' && data.connections) {
-        // מחיקת edges ישנים של הקשר
+        // Remove old edges of that relationship
         const edgesWithoutRelationship = edges.filter(
           (edge) => edge.source !== nodeId && edge.target !== nodeId
         );
         
-        // יצירת edges חדשים
+        // Create new edges
         const newEdges = createEdgesFromRelationship(nodeId, data.connections);
         
-        // עדכון edges
+        // Update edges
         const allEdges = [...edgesWithoutRelationship, ...newEdges];
         setEdges(allEdges);
         setStoreEdges(allEdges);
       }
       
-      // עדכון ה-store
+      // Update store
       const updatedNodes = nodes.map((node) =>
         node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
       );
@@ -215,7 +215,7 @@ const ERDCanvas = () => {
     [nodes, edges, setNodes, setEdges, setStoreNodes, setStoreEdges, createEdgesFromRelationship]
   );
 
-  // עדכון edge (cardinality ו-label)
+  // Save edge updates (cardinality/label)
   const handleSaveEdge = useCallback(
     (edgeId, data) => {
       setEdges((eds) =>
@@ -242,13 +242,13 @@ const ERDCanvas = () => {
     [edges, setEdges, setStoreEdges]
   );
 
-  // מחיקת ישות/קשר
+  // Delete entity/relationship
   const handleDeleteEntity = useCallback(
     (nodeId) => {
       const node = nodes.find((n) => n.id === nodeId);
-      const typeName = node?.type === 'relationship' ? 'קשר' : 'ישות';
+      const typeName = node?.type === 'relationship' ? 'relationship' : 'entity';
       
-      if (window.confirm(`האם אתה בטוח שברצונך למחוק ${typeName} זה?`)) {
+      if (window.confirm(`Are you sure you want to delete this ${typeName}?`)) {
         deleteNode(nodeId);
         setNodes((nds) => nds.filter((node) => node.id !== nodeId));
         setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
@@ -258,7 +258,7 @@ const ERDCanvas = () => {
     [nodes, deleteNode, setNodes, setEdges]
   );
 
-  // הוספת onDelete ו-onEdit לכל node
+  // Add onDelete and onEdit actions to each node
   const nodesWithActions = nodes.map((node) => ({
     ...node,
     data: {
@@ -309,7 +309,7 @@ const ERDCanvas = () => {
         onClose={() => setSelectedEdge(null)}
         onSave={handleSaveEdge}
         onDelete={(edgeId) => {
-          if (window.confirm('האם אתה בטוח שברצונך למחוק קשר זה?')) {
+          if (window.confirm('Are you sure you want to delete this relationship?')) {
             setEdges((eds) => eds.filter((e) => e.id !== edgeId));
             setStoreEdges(edges.filter((e) => e.id !== edgeId));
             setSelectedEdge(null);
