@@ -16,12 +16,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* עיצוב מותאם לעברית */
+/* RTL adaptation for Hebrew */
 [dir="rtl"] .react-flow__node {
   text-align: right;
 }
 
-/* סגנונות React Flow */
+/* React Flow styles */
 .react-flow__attribution {
   display: none;
 }
@@ -34,7 +34,7 @@ body {
   box-shadow: 0 0 0 2px #3b82f6;
 }
 
-/* אנימציות */
+/* Animations */
 @keyframes fadeIn {
   from {
     opacity: 0;
