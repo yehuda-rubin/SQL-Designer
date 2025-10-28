@@ -9,7 +9,7 @@ const apiClient = axios.create({
   },
 });
 
-// Interceptor לטיפול בשגיאות
+// Interceptor for error handling
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -20,38 +20,38 @@ apiClient.interceptors.response.use(
 
 // API Functions
 export const projectsAPI = {
-  // קבלת כל הפרויקטים
+  // Get all projects
   getAll: async () => {
     const response = await apiClient.get('/projects');
     return response.data;
   },
 
-  // קבלת פרויקט בודד
+  // Get a single project by ID
   getById: async (id) => {
     const response = await apiClient.get(`/projects/${id}`);
     return response.data;
   },
 
-  // יצירת פרויקט חדש
+  // Create a new project
   create: async (projectData) => {
     const response = await apiClient.post('/projects', projectData);
     return response.data;
   },
 
-  // עדכון פרויקט
+  // Update an existing project
   update: async (id, projectData) => {
     const response = await apiClient.put(`/projects/${id}`, projectData);
     return response.data;
   },
 
-  // מחיקת פרויקט
+  // Delete a project
   delete: async (id) => {
     const response = await apiClient.delete(`/projects/${id}`);
     return response.data;
   },
 };
 
-// בדיקת בריאות השרת
+// Check server health
 export const healthCheck = async () => {
   try {
     const response = await apiClient.get('/health');
