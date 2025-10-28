@@ -6,7 +6,7 @@ db = SQLAlchemy()
 
 
 class Project(db.Model):
-    """מודל פרויקט ERD"""
+    """ERD project model"""
 
     __tablename__ = 'projects'
 
@@ -20,7 +20,7 @@ class Project(db.Model):
         return f'<Project {self.name}>'
 
     def to_dict(self):
-        """המרה ל-dictionary לשליחה ל-Frontend"""
+        """Convert to a dictionary for sending to the Frontend"""
         return {
             'id': self.id,
             'name': self.name,
@@ -31,14 +31,14 @@ class Project(db.Model):
 
     @staticmethod
     def from_dict(data):
-        """יצירת פרויקט מ-dictionary"""
+        """Create a project from a dictionary"""
         return Project(
             name=data.get('name', 'Untitled Project'),
             data_json=json.dumps(data.get('data', {}), ensure_ascii=False)
         )
 
     def update_from_dict(self, data):
-        """עדכון פרויקט קיים"""
+        """Update an existing project"""
         if 'name' in data:
             self.name = data['name']
         if 'data' in data:
