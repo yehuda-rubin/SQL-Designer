@@ -12,13 +12,13 @@ const EntityNode = ({ data, selected }) => {
       }`}
       onDoubleClick={onEdit}
     >
-      {/* Handles - נקודות חיבור */}
+      {/* Handles - connection points */}
       <Handle type="target" position={Position.Top} className="w-3 h-3 !bg-primary-500" />
       <Handle type="source" position={Position.Bottom} className="w-3 h-3 !bg-primary-500" />
       <Handle type="source" position={Position.Left} className="w-3 h-3 !bg-primary-500" />
       <Handle type="source" position={Position.Right} className="w-3 h-3 !bg-primary-500" />
 
-      {/* Header - שם הישות */}
+      {/* Header - entity name */}
       <div className="bg-primary-600 text-white px-4 py-3 rounded-t-lg flex items-center justify-between">
         <span className="font-bold text-lg">{name || 'ישות חדשה'}</span>
         {onDelete && (
@@ -34,7 +34,7 @@ const EntityNode = ({ data, selected }) => {
         )}
       </div>
 
-      {/* Attributes - מאפיינים */}
+      {/* Attributes - entity attributes list */}
       <div className="p-2">
         {attributes.length === 0 ? (
           <div className="text-center text-gray-400 py-4 text-sm">
@@ -72,7 +72,7 @@ const EntityNode = ({ data, selected }) => {
         )}
       </div>
 
-      {/* Footer - מידע נוסף */}
+      {/* Footer - additional info */}
       {attributes.length > 0 && (
         <div className="bg-gray-50 px-4 py-2 rounded-b-lg border-t text-xs text-gray-500 text-center">
           {attributes.length} מאפיינים
