@@ -27,7 +27,7 @@ const ProjectCard = ({ project, onOpen, onDelete }) => {
       className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer border border-gray-200 hover:border-primary-400 fade-in"
     >
       <div className="p-6">
-        {/* כותרת */}
+        {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-xl font-bold text-gray-900 flex items-center">
             <Edit className="w-5 h-5 ml-2 text-primary-600" />
@@ -41,26 +41,26 @@ const ProjectCard = ({ project, onOpen, onDelete }) => {
           </button>
         </div>
 
-        {/* סטטיסטיקה */}
+        {/* Statistics */}
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div className="bg-gray-50 rounded-lg p-3">
-            <div className="text-sm text-gray-600">ישויות</div>
+            <div className="text-sm text-gray-600">Entities</div>
             <div className="text-2xl font-bold text-primary-600">
               {project.data?.nodes?.length || 0}
             </div>
           </div>
           <div className="bg-gray-50 rounded-lg p-3">
-            <div className="text-sm text-gray-600">קשרים</div>
+            <div className="text-sm text-gray-600">Relationships</div>
             <div className="text-2xl font-bold text-green-600">
               {project.data?.edges?.length || 0}
             </div>
           </div>
         </div>
 
-        {/* תאריך עדכון */}
+        {/* Last updated date */}
         <div className="flex items-center text-sm text-gray-500">
           <Calendar className="w-4 h-4 ml-1" />
-          <span>עודכן: {formatDate(project.updated_at)}</span>
+          <span>Updated: {formatDate(project.updated_at)}</span>
         </div>
       </div>
 
@@ -75,7 +75,7 @@ const ProjectCard = ({ project, onOpen, onDelete }) => {
             onOpen(project.id);
           }}
         >
-          פתח פרויקט
+          Open Project
         </Button>
       </div>
     </div>
