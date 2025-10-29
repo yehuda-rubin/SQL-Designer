@@ -2,9 +2,61 @@ import React from 'react';
 import { Plus, Save, Home, Database, FileCode, Link } from 'lucide-react';
 import Button from '../Common/Button';
 import { useNavigate } from 'react-router-dom';
+import useProjectStore from '../../store/projectStore';
+import { downloadDSDHTML } from '../../utils/dsdExporter';
+import { downloadSQL } from '../../utils/sqlGenerator';
 
 const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving }) => {
   const navigate = useNavigate();
+  const { nodes } = useProjectStore();
+
+  /**
+   * טיפול בייצוא DSD
+   */
+  const handleExportDSD = () => {
+    if (!nodes || nodes.length === 0) {
+      alert('אין נתונים לייצוא. אנא צור ישויות וקשרים תחילה.');
+      return;
+    }
+    
+    const entities = nodes.filter(n => n.type === 'entity');
+    if (entities.length === 0) {
+      alert('אנא צור לפחות ישות אחת לפני ייצוא DSD');
+      return;
+    }
+    
+    try {
+      downloadDSDHTML(nodes, `${projectName}_dsd.html`);
+      console.log('✅ DSD exported successfully!');
+    } catch (error) {
+      console.error('שגיאה בייצוא DSD:', error);
+      alert('אירעה שגיאה בייצוא DSD. אנא נסה שוב.');
+    }
+  };
+
+  /**
+   * טיפול בייצוא SQL
+   */
+  const handleExportSQL = () => {
+    if (!nodes || nodes.length === 0) {
+      alert('אין נתונים לייצוא. אנא צור ישויות וקשרים תחילה.');
+      return;
+    }
+    
+    const entities = nodes.filter(n => n.type === 'entity');
+    if (entities.length === 0) {
+      alert('אנא צור לפחות ישות אחת לפני ייצוא SQL');
+      return;
+    }
+    
+    try {
+      downloadSQL(nodes, `${projectName}_schema.sql`);
+      console.log('✅ SQL exported successfully!');
+    } catch (error) {
+      console.error('שגיאה בייצוא SQL:', error);
+      alert('אירעה שגיאה בייצוא SQL. אנא נסה שוב.');
+    }
+  };
 
   return (
     <div className="bg-white shadow-md border-b border-gray-200">
@@ -44,22 +96,24 @@ const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving
 
           <div className="border-r border-gray-300 h-8"></div>
 
+          {/* ✅ כפתור הפק DSD - מחובר! */}
           <Button
+            onClick={handleExportDSD}
             variant="ghost"
             size="md"
             icon={Database}
-            disabled
-            className="opacity-50"
+            className="hover:bg-gray-100"
           >
             הפק DSD
           </Button>
 
+          {/* ✅ כפתור הפק SQL - מחובר! */}
           <Button
+            onClick={handleExportSQL}
             variant="ghost"
             size="md"
             icon={FileCode}
-            disabled
-            className="opacity-50"
+            className="hover:bg-gray-100"
           >
             הפק SQL
           </Button>
