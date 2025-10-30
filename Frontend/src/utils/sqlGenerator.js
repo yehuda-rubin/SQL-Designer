@@ -1,6 +1,8 @@
 /**
- * SQL Generator for PostgreSQL
+ * SQL Generator for PostgreSQL (FIXED VERSION)
  * מחולל קוד SQL מלא מתרשים ERD
+ * 
+ * ✅ תיקון קריטי: שימוש במפתחות ראשיים אמיתיים במקום _id המומצא
  */
 
 import { convertERDtoDSD } from './erdToDsdConverter';
@@ -26,6 +28,25 @@ const convertDataType = (type) => {
 };
 
 /**
+ * 🔧 פונקצית עזר חדשה - מוצאת את המפתחות הראשיים של טבלה
+ * @param {Object} table - אובייקט הטבלה
+ * @returns {Array} - מערך של attributes שהם PK
+ */
+const getPrimaryKeysOfTable = (table) => {
+  return table.data.attributes.filter(attr => attr.isPrimaryKey);
+};
+
+/**
+ * 🔧 פונקצית עזר חדשה - מוצאת טבלה לפי שם
+ * @param {Array} tables - מערך הטבלאות
+ * @param {String} tableName - שם הטבלה
+ * @returns {Object|null} - הטבלה או null
+ */
+const findTableByName = (tables, tableName) => {
+  return tables.find(t => t.data.name === tableName);
+};
+
+/**
  * יוצר SQL statement ליצירת טבלה
  * @param {Object} table - אובייקט הטבלה
  * @returns {String} - CREATE TABLE statement
@@ -40,9 +61,18 @@ const generateCreateTable = (table) => {
   // פילוח עמודות לפי סוג
   const regularColumns = attributes.filter(attr => !attr.isForeignKey);
   const foreignKeyColumns = attributes.filter(attr => attr.isForeignKey);
-  const primaryKeys = attributes.filter(attr => attr.isPrimaryKey);
+  let primaryKeys = attributes.filter(attr => attr.isPrimaryKey);
   
   let sql = `CREATE TABLE ${name} (\n`;
+  
+  // 🔧 טיפול בטבלה ללא מפתח ראשי מוגדר
+  if (primaryKeys.length === 0) {
+    sql += `    -- ⚠️ אזהרה: לא הוגדר מפתח ראשי!\n`;
+    sql += `    -- 🔧 משתמש בכל התכונות הלא-FK כמפתח ראשי זמני\n`;
+    
+    // לוקח את כל התכונות שאינן FK
+    primaryKeys = regularColumns.length > 0 ? regularColumns : attributes;
+  }
   
   // יצירת עמודות רגילות
   const columnDefinitions = regularColumns.map(attr => {
@@ -72,24 +102,96 @@ const generateCreateTable = (table) => {
 };
 
 /**
- * יוצר SQL statements להוספת Foreign Keys
+ * 🔧 יוצר SQL statements להוספת Foreign Keys - תוקן! (v3)
+ * v3: תיקון התאמת מספר העמודות ב-FK המורכב + טיפול בטבלאות ללא PK
+ * 
  * @param {Object} table - אובייקט הטבלה
+ * @param {Array} allTables - מערך כל הטבלאות (לחיפוש)
  * @returns {String} - ALTER TABLE statements
  */
-const generateForeignKeys = (table) => {
+const generateForeignKeys = (table, allTables) => {
   const { name, attributes = [] } = table.data;
   const foreignKeys = attributes.filter(attr => attr.isForeignKey && attr.references);
   
   if (foreignKeys.length === 0) return '';
   
-  let sql = '';
+  // 🔧 קיבוץ FK לפי טבלת היעד - כדי ליצור FK מורכבים
+  const fkByReference = {};
   
   foreignKeys.forEach(fk => {
-    const constraintName = `fk_${name}_${fk.references}_${fk.name}`.toLowerCase();
+    if (!fkByReference[fk.references]) {
+      fkByReference[fk.references] = [];
+    }
+    fkByReference[fk.references].push(fk);
+  });
+  
+  let sql = '';
+  
+  // 🔧 יצירת FK אחד לכל טבלת יעד (גם אם מורכב)
+  Object.entries(fkByReference).forEach(([referencedTableName, fks]) => {
+    const referencedTable = findTableByName(allTables, referencedTableName);
+    
+    if (!referencedTable) {
+      sql += `-- ⚠️ שגיאה: לא נמצאה טבלה ${referencedTableName}\n\n`;
+      return;
+    }
+    
+    let referencedPKs = getPrimaryKeysOfTable(referencedTable);
+    
+    // 🔧 טיפול בטבלה ללא מפתח ראשי מוגדר
+    if (referencedPKs.length === 0) {
+      sql += `-- ⚠️ אזהרה: טבלה ${referencedTableName} ללא מפתח ראשי מוגדר!\n`;
+      sql += `-- 🔧 משתמש בכל התכונות כמפתח ראשי זמני\n`;
+      
+      // לוקח את כל התכונות שאינן FK
+      referencedPKs = referencedTable.data.attributes.filter(attr => !attr.isForeignKey);
+      
+      if (referencedPKs.length === 0) {
+        sql += `-- ❌ שגיאה קריטית: אין תכונות ב-${referencedTableName}\n\n`;
+        return;
+      }
+    }
+    
+    // 🔧 בניית רשימת עמודות ה-FK (צד שמאל)
+    const fkColumns = fks.map(fk => fk.name).join(', ');
+    
+    // 🔧🔧 v3: איסוף נכון של כל העמודות המוזכרות מכל ה-FKs
+    let referencedColumns;
+    
+    // אוסף את כל ה-referencedColumns מכל ה-FKs
+    const allReferencedColumns = [];
+    fks.forEach(fk => {
+      if (fk.referencedColumns && fk.referencedColumns.length > 0) {
+        allReferencedColumns.push(...fk.referencedColumns);
+      }
+    });
+    
+    if (allReferencedColumns.length > 0) {
+      // יש מידע מפורש - משתמשים בו
+      referencedColumns = allReferencedColumns.join(', ');
+    } else {
+      // אחרת - משתמשים במפתחות הראשיים לפי סדר
+      referencedColumns = referencedPKs.map(pk => pk.name).join(', ');
+    }
+    
+    // 🔧 בדיקת התאמה: מספר עמודות FK = מספר עמודות referenced
+    const fkCount = fks.length;
+    const refCount = allReferencedColumns.length > 0 ? allReferencedColumns.length : referencedPKs.length;
+    
+    if (fkCount !== refCount) {
+      sql += `-- ⚠️ אזהרה: אי התאמה במספר עמודות!\n`;
+      sql += `-- FK מכיל ${fkCount} עמודות, אבל ${referencedTableName} מצפה ל-${refCount} עמודות\n`;
+      sql += `-- FK: ${fkColumns}\n`;
+      sql += `-- Referenced: ${referencedColumns}\n\n`;
+      return;
+    }
+    
+    const constraintName = `fk_${name}_${referencedTableName}`.toLowerCase().replace(/\s/g, '_');
+    
     sql += `ALTER TABLE ${name}\n`;
     sql += `    ADD CONSTRAINT ${constraintName}\n`;
-    sql += `    FOREIGN KEY (${fk.name})\n`;
-    sql += `    REFERENCES ${fk.references}(${fk.references.toLowerCase()}_id);\n\n`;
+    sql += `    FOREIGN KEY (${fkColumns})\n`;
+    sql += `    REFERENCES ${referencedTableName}(${referencedColumns});\n\n`;
   });
   
   return sql;
@@ -122,16 +224,19 @@ const generateUniqueConstraints = (table, nodes) => {
       
       if (relevantConn) {
         const otherConn = connections.find(c => c !== relevantConn);
-        const fkColumnName = `${otherConn.entityName.toLowerCase()}_id`;
         
-        const fkExists = table.data.attributes.find(attr => 
-          attr.name === fkColumnName && attr.isForeignKey
+        // 🔧 מחפשים את כל ה-FK שמקשרים לטבלה הזו
+        const fkColumns = table.data.attributes.filter(attr => 
+          attr.isForeignKey && attr.references === otherConn.entityName
         );
         
-        if (fkExists) {
+        if (fkColumns.length > 0) {
+          const columnNames = fkColumns.map(fk => fk.name).join(', ');
+          const constraintName = `uq_${table.data.name}_${fkColumns[0].references}`.toLowerCase().replace(/\s/g, '_');
+          
           sql += `ALTER TABLE ${table.data.name}\n`;
-          sql += `    ADD CONSTRAINT uq_${table.data.name}_${fkColumnName}\n`;
-          sql += `    UNIQUE (${fkColumnName});\n\n`;
+          sql += `    ADD CONSTRAINT ${constraintName}\n`;
+          sql += `    UNIQUE (${columnNames});\n\n`;
         }
       }
     }
@@ -177,7 +282,7 @@ export const generateSQL = (nodes) => {
   sql += '-- ========================================\n\n';
   
   tables.forEach(table => {
-    const fkSQL = generateForeignKeys(table);
+    const fkSQL = generateForeignKeys(table, tables); // 🔧 מעביר את כל הטבלאות!
     if (fkSQL) {
       sql += fkSQL;
     }

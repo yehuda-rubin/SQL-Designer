@@ -1,7 +1,29 @@
 /**
- * ERD to DSD Converter - Ullman Method
+ * ERD to DSD Converter - Ullman Method (FIXED VERSION)
  * ממיר תרשים ERD לתרשים DSD (Database Schema Diagram) לפי שיטת אולמן
+ * 
+ * ✅ תיקון קריטי: שמירת המפתחות הראשיים האמיתיים של טבלאות האב
  */
+
+/**
+ * 🔧 פונקצית עזר חדשה - מוצאת את המפתחות הראשיים של ישות
+ * @param {Object} entity - הישות
+ * @returns {Array} - מערך המפתחות הראשיים
+ */
+const getPrimaryKeys = (entity) => {
+  if (!entity || !entity.data || !entity.data.attributes) {
+    return [];
+  }
+  
+  const primaryKeys = entity.data.attributes.filter(attr => attr.isPrimaryKey);
+  
+  // אם אין מפתחות ראשיים מוגדרים, נחזיר את העמודה הראשונה (fallback)
+  if (primaryKeys.length === 0 && entity.data.attributes.length > 0) {
+    return [entity.data.attributes[0]];
+  }
+  
+  return primaryKeys;
+};
 
 /**
  * קובע האם צריך ליצור טבלת חיבור (Junction Table) לפי שיטת אולמן
@@ -27,7 +49,61 @@ const needsJunctionTable = (connections) => {
 };
 
 /**
- * יוצר טבלת חיבור (Junction Table) מקשר
+ * 🔧 מוסיף Foreign Key לטבלה - תוקן!
+ * כעת שומר את המפתחות הראשיים האמיתיים של הטבלה המוזכרת
+ * 
+ * @param {Object} table - הטבלה
+ * @param {Object} referencedEntity - הישות המוזכרת (לא רק שם!)
+ * @param {String} cardinality - cardinality של החיבור
+ * @returns {Object} - הטבלה המעודכנת
+ */
+const addForeignKeyToTable = (table, referencedEntity, cardinality) => {
+  if (!referencedEntity) return table;
+  
+  const referencedTableName = referencedEntity.data.name;
+  
+  // 🔧 מוצאים את המפתחות הראשיים האמיתיים של הטבלה המוזכרת
+  const referencedPrimaryKeys = getPrimaryKeys(referencedEntity);
+  
+  if (referencedPrimaryKeys.length === 0) {
+    console.warn(`⚠️ אין מפתחות ראשיים ב-${referencedTableName}`);
+    return table;
+  }
+  
+  // 🔧 יצירת FK לכל עמודת PK בטבלת האב
+  const newForeignKeys = referencedPrimaryKeys.map(pkAttr => {
+    const fkName = `${referencedTableName.toLowerCase()}_${pkAttr.name.toLowerCase()}`;
+    
+    // בדיקה אם ה-FK כבר קיים
+    const existingFK = table.data.attributes.find(attr => attr.name === fkName);
+    if (existingFK) return null;
+    
+    return {
+      name: fkName,
+      type: pkAttr.type, // 🔧 משתמשים בטיפוס האמיתי של המפתח הראשי!
+      isForeignKey: true,
+      references: referencedTableName,
+      referencedColumns: [pkAttr.name], // 🔧 שומרים את שם העמודה המדויק!
+      isPrimaryKey: false,
+      isNullable: cardinality === '0..1' // אם אופציונלי
+    };
+  }).filter(fk => fk !== null); // מסננים nulls
+  
+  if (newForeignKeys.length === 0) return table;
+  
+  return {
+    ...table,
+    data: {
+      ...table.data,
+      attributes: [...table.data.attributes, ...newForeignKeys]
+    }
+  };
+};
+
+/**
+ * 🔧 יוצר טבלת חיבור (Junction Table) מקשר - תוקן!
+ * כעת שומר מפתחות ראשיים מדויקים מכל הישויות
+ * 
  * @param {Object} relationship - אובייקט הקשר
  * @param {Array} entities - מערך הישויות
  * @returns {Object} - אובייקט הטבלה החדשה
@@ -39,21 +115,41 @@ const createJunctionTable = (relationship, entities) => {
   // שם הטבלה
   const tableName = name || `Junction_${id}`;
   
-  // יצירת Foreign Keys לכל ישות מחוברת
-  const foreignKeys = connections
+  // 🔧 יצירת Foreign Keys לכל ישות מחוברת - עם מפתחות ראשיים מדויקים
+  const foreignKeys = [];
+  const primaryKeyColumns = []; // לצורך יצירת Composite PK
+  
+  connections
     .filter(conn => conn.entityId || conn.entityName)
-    .map(conn => {
-      const entityName = conn.entityName || 
-        entities.find(e => e.id === conn.entityId)?.data.name || 
-        'Unknown';
+    .forEach(conn => {
+      const entity = entities.find(e => 
+        e.id === conn.entityId || 
+        e.data.name === conn.entityName
+      );
       
-      return {
-        name: `${entityName.toLowerCase()}_id`,
-        type: 'INT',
-        isForeignKey: true,
-        references: entityName,
-        isPrimaryKey: true // חלק מה-Composite Primary Key
-      };
+      if (!entity) {
+        console.warn(`⚠️ לא נמצאה ישות עבור ${conn.entityName || conn.entityId}`);
+        return;
+      }
+      
+      const entityName = entity.data.name;
+      const primaryKeys = getPrimaryKeys(entity);
+      
+      // יצירת FK לכל PK של הישות
+      primaryKeys.forEach(pkAttr => {
+        const fkName = `${entityName.toLowerCase()}_${pkAttr.name.toLowerCase()}`;
+        
+        foreignKeys.push({
+          name: fkName,
+          type: pkAttr.type, // 🔧 טיפוס אמיתי
+          isForeignKey: true,
+          references: entityName,
+          referencedColumns: [pkAttr.name], // 🔧 עמודה מדויקת
+          isPrimaryKey: true // חלק מה-Composite Primary Key של טבלת החיבור
+        });
+        
+        primaryKeyColumns.push(fkName);
+      });
     });
   
   // הוספת תכונות הקשר כעמודות רגילות
@@ -70,7 +166,8 @@ const createJunctionTable = (relationship, entities) => {
       name: tableName,
       attributes: [...foreignKeys, ...relationshipAttributes],
       isJunctionTable: true,
-      originalRelationship: id
+      originalRelationship: id,
+      primaryKeyColumns // שמירת רשימת ה-PK לשימוש ב-SQL Generator
     },
     position: relationship.position
   };
@@ -95,38 +192,6 @@ const entityToTable = (entity) => {
 };
 
 /**
- * מוסיף Foreign Key לטבלה
- * @param {Object} table - הטבלה
- * @param {String} referencedTable - שם הטבלה המוזכרת
- * @param {String} cardinality - cardinality של החיבור
- * @returns {Object} - הטבלה המעודכנת
- */
-const addForeignKeyToTable = (table, referencedTable, cardinality) => {
-  const fkName = `${referencedTable.toLowerCase()}_id`;
-  
-  // בדיקה אם ה-FK כבר קיים
-  const existingFK = table.data.attributes.find(attr => attr.name === fkName);
-  if (existingFK) return table;
-  
-  const foreignKey = {
-    name: fkName,
-    type: 'INT',
-    isForeignKey: true,
-    references: referencedTable,
-    isPrimaryKey: false,
-    isNullable: cardinality === '0..1' // אם אופציונלי
-  };
-  
-  return {
-    ...table,
-    data: {
-      ...table.data,
-      attributes: [...table.data.attributes, foreignKey]
-    }
-  };
-};
-
-/**
  * מטפל בקשר 1:N או 1:1 - מוסיף FK לצד המתאים
  * @param {Object} relationship - הקשר
  * @param {Array} tables - מערך הטבלאות
@@ -141,7 +206,7 @@ const handleOneToManyOrOneToOne = (relationship, tables, entities) => {
   const [conn1, conn2] = connections;
   
   // קביעת איזה צד מקבל את ה-FK
-  let sourceTable, targetTable, targetCardinality;
+  let sourceTable, targetEntity, targetCardinality;
   
   if (conn1.cardinality === 'N' || conn1.cardinality === '0..1') {
     // conn1 בצד ה-Many או האופציונלי - הוא מקבל את ה-FK
@@ -149,9 +214,9 @@ const handleOneToManyOrOneToOne = (relationship, tables, entities) => {
       t.id === conn1.entityId || 
       t.data.name === conn1.entityName
     );
-    targetTable = tables.find(t => 
-      t.id === conn2.entityId || 
-      t.data.name === conn2.entityName
+    targetEntity = entities.find(e => 
+      e.id === conn2.entityId || 
+      e.data.name === conn2.entityName
     );
     targetCardinality = conn1.cardinality;
   } else {
@@ -160,19 +225,19 @@ const handleOneToManyOrOneToOne = (relationship, tables, entities) => {
       t.id === conn2.entityId || 
       t.data.name === conn2.entityName
     );
-    targetTable = tables.find(t => 
-      t.id === conn1.entityId || 
-      t.data.name === conn1.entityName
+    targetEntity = entities.find(e => 
+      e.id === conn1.entityId || 
+      e.data.name === conn1.entityName
     );
     targetCardinality = conn2.cardinality;
   }
   
-  if (!sourceTable || !targetTable) return tables;
+  if (!sourceTable || !targetEntity) return tables;
   
-  // הוספת ה-FK
+  // 🔧 הוספת ה-FK - עכשיו מעביר את כל הישות ולא רק את השם
   const updatedSourceTable = addForeignKeyToTable(
     sourceTable, 
-    targetTable.data.name,
+    targetEntity, // 🔧 מעביר ישות שלמה!
     targetCardinality
   );
   
@@ -229,6 +294,7 @@ export const convertERDtoDSD = (nodes) => {
           target: targetTable.id,
           data: {
             foreignKeyName: fk.name,
+            referencedColumns: fk.referencedColumns || [], // 🔧 שומרים את העמודות המוזכרות
             isNullable: fk.isNullable || false
           }
         });
