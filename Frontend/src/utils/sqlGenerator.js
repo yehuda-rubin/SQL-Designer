@@ -113,15 +113,16 @@ const generateCreateTable = (table) => {
 };
 
 /**
- * 🔧 יוצר SQL statements להוספת Foreign Keys - תוקן! (v4)
+ * 🔧 יוצר SQL statements להוספת Foreign Keys - תוקן! (v5)
  * v4: תמיכה ב-Foreign Key Groups - מזהה קבוצות FK ויוצר constraint מורכב לכל קבוצה
+ * v5: תמיכה ב-Junction Tables - ON DELETE CASCADE עבור טבלאות חיבור
  *
  * @param {Object} table - אובייקט הטבלה
  * @param {Array} allTables - מערך כל הטבלאות (לחיפוש)
  * @returns {String} - ALTER TABLE statements
  */
 const generateForeignKeys = (table, allTables) => {
-  const { name, attributes = [] } = table.data;
+  const { name, attributes = [], isJunctionTable = false } = table.data;
   const foreignKeys = attributes.filter(attr => attr.isForeignKey && attr.references);
 
   if (foreignKeys.length === 0) return '';
@@ -211,11 +212,15 @@ const generateForeignKeys = (table, allTables) => {
       sql += `-- 🔑 Composite Foreign Key Group (${sortedFks.length} columns)\n`;
     }
 
-    // 🔧 קביעת ON DELETE behavior לפי cardinality
+    // 🔧 קביעת ON DELETE behavior לפי cardinality וסוג הטבלה
     const cardinality = sortedFks[0].cardinality;
     let onDelete = '';
 
-    if (cardinality === '0..1') {
+    if (isJunctionTable) {
+      // 🔧 ב-Junction Tables (M:N) - תמיד CASCADE
+      // מחיקת רשומה מטבלת האב צריכה למחוק את הקשרים בטבלת החיבור
+      onDelete = '\n    ON DELETE CASCADE';
+    } else if (cardinality === '0..1') {
       onDelete = '\n    ON DELETE SET NULL';
     } else if (cardinality === '1') {
       onDelete = '\n    ON DELETE CASCADE';
