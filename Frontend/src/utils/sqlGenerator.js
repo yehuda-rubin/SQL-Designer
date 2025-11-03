@@ -288,7 +288,6 @@ const generateUniqueConstraints = (table) => {
 
 /**
  * 🔧 יוצר אינדקסים על FKs לביצועים
- * מדלג על עמודות שכבר יש להן UNIQUE constraint (כי UNIQUE יוצר אינדקס אוטומטית)
  * @param {Object} table - אובייקט הטבלה
  * @returns {String} - CREATE INDEX statements
  */
@@ -307,8 +306,7 @@ const generateIndexes = (table) => {
     if (!fkGroups.has(groupKey)) {
       fkGroups.set(groupKey, {
         foreignKeys: [],
-        references: fk.references,
-        cardinality: fk.cardinality // 🔧 שומר את ה-cardinality
+        references: fk.references
       });
     }
 
@@ -317,20 +315,14 @@ const generateIndexes = (table) => {
 
   let sql = '';
 
-  // 🔧 יצירת אינדקס רק לקבוצות FK ללא UNIQUE constraint
-  // (UNIQUE constraint יוצר אינדקס אוטומטית, אז לא צריך INDEX נוסף)
+  // 🔧 יצירת אינדקס לכל קבוצת FK
   fkGroups.forEach((group, groupKey) => {
-    const { foreignKeys: fks, references, cardinality } = group;
+    const { foreignKeys: fks, references } = group;
+    const sortedFks = fks.sort((a, b) => (a.foreignKeyGroupIndex || 0) - (b.foreignKeyGroupIndex || 0));
+    const columnNames = sortedFks.map(fk => fk.name).join(', ');
+    const indexName = `idx_${name}_${references}`.toLowerCase().replace(/\s/g, '_');
 
-    // 🔧 מדלג על FK עם cardinality '0..1' או '1' (יש להם UNIQUE constraint)
-    // יוצר INDEX רק עבור cardinality 'N' (אין UNIQUE constraint)
-    if (cardinality === 'N') {
-      const sortedFks = fks.sort((a, b) => (a.foreignKeyGroupIndex || 0) - (b.foreignKeyGroupIndex || 0));
-      const columnNames = sortedFks.map(fk => fk.name).join(', ');
-      const indexName = `idx_${name}_${references}`.toLowerCase().replace(/\s/g, '_');
-
-      sql += `CREATE INDEX ${indexName} ON ${name}(${columnNames});\n`;
-    }
+    sql += `CREATE INDEX ${indexName} ON ${name}(${columnNames});\n`;
   });
 
   return sql;
@@ -393,8 +385,7 @@ export const generateSQL = (nodes) => {
 
   // שלב 4: הוספת אינדקסים לביצועים
   sql += '\n-- ========================================\n';
-  sql += '-- שלב 4: אינדקסים לביצועים (רק עבור cardinality N)\n';
-  sql += '-- הערה: עמודות עם UNIQUE constraint (0..1, 1) כבר יש להן אינדקס אוטומטי\n';
+  sql += '-- שלב 4: אינדקסים לביצועים\n';
   sql += '-- ========================================\n\n';
 
   tables.forEach(table => {

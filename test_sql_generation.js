@@ -191,16 +191,12 @@ if (sql.includes('ON DELETE RESTRICT')) {
   console.log('❌ Missing ON DELETE RESTRICT for c_cc');
 }
 
-// Check for indexes (only for cardinality N - others have UNIQUE constraints)
+// Check for indexes
 const indexMatches = sql.match(/CREATE INDEX/g);
-if (indexMatches && indexMatches.length === 1 && sql.includes('CREATE INDEX idx_d_c')) {
-  console.log(`✅ Only necessary indexes created (${indexMatches.length} found - cardinality N only)`);
-  console.log('✅ Redundant indexes avoided (0..1, 1 have UNIQUE constraints with automatic indexes)');
-} else if (indexMatches && indexMatches.length > 1) {
-  console.log(`⚠️  Too many indexes created (${indexMatches.length} found - should be 1)`);
-  console.log('    Note: Columns with UNIQUE constraints already have automatic indexes');
+if (indexMatches && indexMatches.length >= 3) {
+  console.log(`✅ Indexes created on all FK columns (${indexMatches.length} found)`);
 } else {
-  console.log('❌ Missing index on c_cc (cardinality N)');
+  console.log('❌ Missing indexes on FK columns');
 }
 
 console.log('\n' + '='.repeat(80));
