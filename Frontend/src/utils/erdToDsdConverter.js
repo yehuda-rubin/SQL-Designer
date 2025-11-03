@@ -104,6 +104,7 @@ const addForeignKeyToTable = (table, referencedEntity, cardinality) => {
       foreignKeyGroup: fkGroupId, // 🔧 מזהה קבוצת FK לקישור בין העמודות
       foreignKeyGroupIndex: index, // 🔧 מיקום העמודה בקבוצה
       foreignKeyGroupSize: referencedPrimaryKeys.length, // 🔧 גודל הקבוצה
+      cardinality: cardinality, // 🔧 שמירת הקרדינליות המקורית
       isPrimaryKey: false,
       isNullable: cardinality === '0..1' // אם אופציונלי
     };
