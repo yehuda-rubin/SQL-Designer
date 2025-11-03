@@ -64,11 +64,18 @@ const addForeignKeyToTable = (table, referencedEntity, cardinality) => {
   const referencedTableName = referencedEntity.data.name;
 
   // 🔧 מוצאים את המפתחות הראשיים האמיתיים של הטבלה המוזכרת
-  const referencedPrimaryKeys = getPrimaryKeys(referencedEntity);
+  let referencedPrimaryKeys = getPrimaryKeys(referencedEntity);
 
+  // 🔧 טיפול בטבלה ללא מפתח ראשי מוגדר - משתמש בתכונה הראשונה
   if (referencedPrimaryKeys.length === 0) {
-    console.warn(`⚠️ אין מפתחות ראשיים ב-${referencedTableName}`);
-    return table;
+    console.warn(`⚠️ אין מפתחות ראשיים ב-${referencedTableName} - משתמש בתכונה הראשונה`);
+    const attributes = referencedEntity.data.attributes || [];
+    if (attributes.length === 0) {
+      console.error(`❌ אין תכונות ב-${referencedTableName}`);
+      return table;
+    }
+    // לוקח רק את התכונה הראשונה
+    referencedPrimaryKeys = [attributes[0]];
   }
 
   // 🔧 יצירת מזהה ייחודי לקבוצת FK (לטיפול ב-Composite FK)

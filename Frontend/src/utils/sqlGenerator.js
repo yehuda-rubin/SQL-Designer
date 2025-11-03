@@ -68,10 +68,10 @@ const generateCreateTable = (table) => {
   // 🔧 טיפול בטבלה ללא מפתח ראשי מוגדר
   if (primaryKeys.length === 0) {
     sql += `    -- ⚠️ אזהרה: לא הוגדר מפתח ראשי!\n`;
-    sql += `    -- 🔧 משתמש בכל התכונות הלא-FK כמפתח ראשי זמני\n`;
-    
-    // לוקח את כל התכונות שאינן FK
-    primaryKeys = regularColumns.length > 0 ? regularColumns : attributes;
+    sql += `    -- 🔧 משתמש בתכונה הראשונה כמפתח ראשי זמני\n`;
+
+    // לוקח את התכונה הראשונה הלא-FK
+    primaryKeys = regularColumns.length > 0 ? [regularColumns[0]] : (attributes.length > 0 ? [attributes[0]] : []);
   }
   
   // יצירת עמודות רגילות
@@ -152,14 +152,17 @@ const generateForeignKeys = (table, allTables) => {
     // 🔧 טיפול בטבלה ללא מפתח ראשי מוגדר
     if (referencedPKs.length === 0) {
       sql += `-- ⚠️ אזהרה: טבלה ${referencedTableName} ללא מפתח ראשי מוגדר!\n`;
-      sql += `-- 🔧 משתמש בכל התכונות כמפתח ראשי זמני\n`;
+      sql += `-- 🔧 משתמש בתכונה הראשונה כמפתח ראשי זמני\n`;
 
-      referencedPKs = referencedTable.data.attributes.filter(attr => !attr.isForeignKey);
+      const nonFKAttributes = referencedTable.data.attributes.filter(attr => !attr.isForeignKey);
 
-      if (referencedPKs.length === 0) {
+      if (nonFKAttributes.length === 0 && referencedTable.data.attributes.length === 0) {
         sql += `-- ❌ שגיאה קריטית: אין תכונות ב-${referencedTableName}\n\n`;
         return;
       }
+
+      // לוקח רק את התכונה הראשונה הלא-FK
+      referencedPKs = nonFKAttributes.length > 0 ? [nonFKAttributes[0]] : [referencedTable.data.attributes[0]];
     }
 
     // 🔧 מיון ה-FKs לפי foreignKeyGroupIndex אם קיים

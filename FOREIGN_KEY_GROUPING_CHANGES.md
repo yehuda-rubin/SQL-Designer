@@ -138,3 +138,44 @@ persons_last_name    | FK Group [2/2]      | VARCHAR(255)
 - **No database migration needed**: This is a data model improvement, not a schema change
 - **Existing projects**: Old FKs without grouping metadata will continue to work via fallback logic
 - **New projects**: Will automatically use the new grouped FK system
+
+## Additional Fix: Fallback Logic for Tables Without Primary Keys
+
+### Issue
+When a table had no primary key defined, the system had inconsistent fallback behavior:
+- `generateCreateTable()` used ALL columns as a composite PK
+- But FK references only used the FIRST column
+- This caused a mismatch: `PRIMARY KEY (cc, cd)` but `FOREIGN KEY (c_cc) REFERENCES c(cc)`
+
+### Solution
+Changed fallback logic to consistently use only the **first column** as the primary key:
+- Both table creation and FK generation now use the same logic
+- FK references now match the actual PK structure
+
+### Example
+**Before:**
+```sql
+CREATE TABLE c (
+    cc VARCHAR(255),
+    cd VARCHAR(255),
+    PRIMARY KEY (cc, cd)  -- All columns
+);
+
+ALTER TABLE d
+    ADD CONSTRAINT fk_d_c
+    FOREIGN KEY (c_cc)
+    REFERENCES c(cc);  -- Only first column → MISMATCH!
+```
+
+**After:**
+```sql
+CREATE TABLE c (
+    cc VARCHAR(255) PRIMARY KEY,  -- Only first column
+    cd VARCHAR(255)
+);
+
+ALTER TABLE d
+    ADD CONSTRAINT fk_d_c
+    FOREIGN KEY (c_cc)
+    REFERENCES c(cc);  -- Matches PK → CORRECT!
+```
