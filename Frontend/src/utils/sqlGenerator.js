@@ -52,52 +52,63 @@ const findTableByName = (tables, tableName) => {
  * @returns {String} - CREATE TABLE statement
  */
 const generateCreateTable = (table) => {
-  const { name, attributes = [] } = table.data;
-  
+  const { name, attributes = [], isJunctionTable = false } = table.data;
+
   if (attributes.length === 0) {
     return `-- טבלה ${name} ללא עמודות\n`;
   }
-  
+
   // פילוח עמודות לפי סוג
   const regularColumns = attributes.filter(attr => !attr.isForeignKey);
   const foreignKeyColumns = attributes.filter(attr => attr.isForeignKey);
   let primaryKeys = attributes.filter(attr => attr.isPrimaryKey);
-  
+
+  // 🔧 בדיקה אם טבלה זו צריכה surrogate key
+  const needsSurrogateKey = foreignKeyColumns.length > 0 && !isJunctionTable;
+
   let sql = `CREATE TABLE ${name} (\n`;
-  
-  // 🔧 טיפול בטבלה ללא מפתח ראשי מוגדר
-  if (primaryKeys.length === 0) {
+  const allColumns = [];
+
+  // 🔧 אם צריך surrogate key - מוסיפים id SERIAL
+  if (needsSurrogateKey) {
+    allColumns.push(`    id SERIAL PRIMARY KEY`);
+  }
+
+  // 🔧 טיפול בטבלה ללא מפתח ראשי מוגדר (רק אם לא junction table)
+  if (primaryKeys.length === 0 && !needsSurrogateKey) {
     sql += `    -- ⚠️ אזהרה: לא הוגדר מפתח ראשי!\n`;
     sql += `    -- 🔧 משתמש בתכונה הראשונה כמפתח ראשי זמני\n`;
 
     // לוקח את התכונה הראשונה הלא-FK
     primaryKeys = regularColumns.length > 0 ? [regularColumns[0]] : (attributes.length > 0 ? [attributes[0]] : []);
   }
-  
+
   // יצירת עמודות רגילות
   const columnDefinitions = regularColumns.map(attr => {
     const nullable = attr.isNullable !== false ? '' : ' NOT NULL';
     return `    ${attr.name} ${convertDataType(attr.type)}${nullable}`;
   });
-  
+
   // יצירת עמודות FK
   const fkColumnDefinitions = foreignKeyColumns.map(attr => {
-    const nullable = attr.isNullable ? '' : ' NOT NULL';
+    // 🔧 NOT NULL לפי cardinality: '1' או 'N' = חובה, '0..1' = אופציונלי
+    const isRequired = attr.cardinality === '1' || attr.cardinality === 'N';
+    const nullable = isRequired ? ' NOT NULL' : '';
     return `    ${attr.name} ${convertDataType(attr.type)}${nullable}`;
   });
-  
+
   // איחוד כל העמודות
-  const allColumns = [...columnDefinitions, ...fkColumnDefinitions];
-  
-  // הוספת PRIMARY KEY constraint
-  if (primaryKeys.length > 0) {
+  allColumns.push(...columnDefinitions, ...fkColumnDefinitions);
+
+  // הוספת PRIMARY KEY constraint (רק אם לא הוספנו surrogate key)
+  if (!needsSurrogateKey && primaryKeys.length > 0) {
     const pkColumns = primaryKeys.map(pk => pk.name).join(', ');
     allColumns.push(`    PRIMARY KEY (${pkColumns})`);
   }
-  
+
   sql += allColumns.join(',\n');
   sql += '\n);\n';
-  
+
   return sql;
 };
 
@@ -200,6 +211,18 @@ const generateForeignKeys = (table, allTables) => {
       sql += `-- 🔑 Composite Foreign Key Group (${sortedFks.length} columns)\n`;
     }
 
+    // 🔧 קביעת ON DELETE behavior לפי cardinality
+    const cardinality = sortedFks[0].cardinality;
+    let onDelete = '';
+
+    if (cardinality === '0..1') {
+      onDelete = '\n    ON DELETE SET NULL';
+    } else if (cardinality === '1') {
+      onDelete = '\n    ON DELETE CASCADE';
+    } else if (cardinality === 'N') {
+      onDelete = '\n    ON DELETE RESTRICT';
+    }
+
     const constraintName = isGrouped
       ? groupKey.replace(/\s/g, '_')
       : `fk_${name}_${referencedTableName}`.toLowerCase().replace(/\s/g, '_');
@@ -207,57 +230,101 @@ const generateForeignKeys = (table, allTables) => {
     sql += `ALTER TABLE ${name}\n`;
     sql += `    ADD CONSTRAINT ${constraintName}\n`;
     sql += `    FOREIGN KEY (${fkColumns})\n`;
-    sql += `    REFERENCES ${referencedTableName}(${referencedColumns});\n\n`;
+    sql += `    REFERENCES ${referencedTableName}(${referencedColumns})${onDelete};\n\n`;
   });
 
   return sql;
 };
 
 /**
- * יוצר UNIQUE constraints לקשרים 1:1
+ * 🔧 יוצר UNIQUE constraints לפי cardinality (v2)
  * @param {Object} table - אובייקט הטבלה
- * @param {Array} nodes - מערך של nodes מקוריים
  * @returns {String} - ALTER TABLE statements עבור UNIQUE
  */
-const generateUniqueConstraints = (table, nodes) => {
-  // מציאת קשרים 1:1
-  const relationships = nodes.filter(n => n.type === 'relationship');
-  
+const generateUniqueConstraints = (table) => {
+  const { name, attributes = [] } = table.data;
+  const foreignKeys = attributes.filter(attr => attr.isForeignKey && attr.references);
+
+  if (foreignKeys.length === 0) return '';
+
+  // 🔧 קיבוץ FK לפי foreignKeyGroup
+  const fkGroups = new Map();
+
+  foreignKeys.forEach(fk => {
+    const groupKey = fk.foreignKeyGroup || `legacy_${fk.references}`;
+
+    if (!fkGroups.has(groupKey)) {
+      fkGroups.set(groupKey, {
+        foreignKeys: [],
+        cardinality: fk.cardinality,
+        references: fk.references
+      });
+    }
+
+    fkGroups.get(groupKey).foreignKeys.push(fk);
+  });
+
   let sql = '';
-  
-  relationships.forEach(rel => {
-    const { connections = [] } = rel.data;
-    
-    // בדיקה אם זה קשר 1:1
-    if (connections.length === 2 &&
-        connections[0].cardinality === '1' &&
-        connections[1].cardinality === '1') {
-      
-      // מציאת העמודה שצריכה להיות UNIQUE
-      const relevantConn = connections.find(conn => 
-        conn.entityName === table.data.name || conn.entityId === table.id
-      );
-      
-      if (relevantConn) {
-        const otherConn = connections.find(c => c !== relevantConn);
-        
-        // 🔧 מחפשים את כל ה-FK שמקשרים לטבלה הזו
-        const fkColumns = table.data.attributes.filter(attr => 
-          attr.isForeignKey && attr.references === otherConn.entityName
-        );
-        
-        if (fkColumns.length > 0) {
-          const columnNames = fkColumns.map(fk => fk.name).join(', ');
-          const constraintName = `uq_${table.data.name}_${fkColumns[0].references}`.toLowerCase().replace(/\s/g, '_');
-          
-          sql += `ALTER TABLE ${table.data.name}\n`;
-          sql += `    ADD CONSTRAINT ${constraintName}\n`;
-          sql += `    UNIQUE (${columnNames});\n\n`;
-        }
-      }
+
+  // 🔧 יצירת UNIQUE constraint לכל קבוצה עם cardinality '0..1' או '1'
+  fkGroups.forEach((group, groupKey) => {
+    const { foreignKeys: fks, cardinality, references } = group;
+
+    // UNIQUE רק לקרדינליות '0..1' או '1' (at most one)
+    if (cardinality === '0..1' || cardinality === '1') {
+      const sortedFks = fks.sort((a, b) => (a.foreignKeyGroupIndex || 0) - (b.foreignKeyGroupIndex || 0));
+      const columnNames = sortedFks.map(fk => fk.name).join(', ');
+      const constraintName = `uq_${name}_${references}`.toLowerCase().replace(/\s/g, '_');
+
+      sql += `-- 🔒 UNIQUE constraint for ${cardinality} cardinality\n`;
+      sql += `ALTER TABLE ${name}\n`;
+      sql += `    ADD CONSTRAINT ${constraintName}\n`;
+      sql += `    UNIQUE (${columnNames});\n\n`;
     }
   });
-  
+
+  return sql;
+};
+
+/**
+ * 🔧 יוצר אינדקסים על FKs לביצועים
+ * @param {Object} table - אובייקט הטבלה
+ * @returns {String} - CREATE INDEX statements
+ */
+const generateIndexes = (table) => {
+  const { name, attributes = [] } = table.data;
+  const foreignKeys = attributes.filter(attr => attr.isForeignKey && attr.references);
+
+  if (foreignKeys.length === 0) return '';
+
+  // 🔧 קיבוץ FK לפי foreignKeyGroup
+  const fkGroups = new Map();
+
+  foreignKeys.forEach(fk => {
+    const groupKey = fk.foreignKeyGroup || `legacy_${fk.references}`;
+
+    if (!fkGroups.has(groupKey)) {
+      fkGroups.set(groupKey, {
+        foreignKeys: [],
+        references: fk.references
+      });
+    }
+
+    fkGroups.get(groupKey).foreignKeys.push(fk);
+  });
+
+  let sql = '';
+
+  // 🔧 יצירת אינדקס לכל קבוצת FK
+  fkGroups.forEach((group, groupKey) => {
+    const { foreignKeys: fks, references } = group;
+    const sortedFks = fks.sort((a, b) => (a.foreignKeyGroupIndex || 0) - (b.foreignKeyGroupIndex || 0));
+    const columnNames = sortedFks.map(fk => fk.name).join(', ');
+    const indexName = `idx_${name}_${references}`.toLowerCase().replace(/\s/g, '_');
+
+    sql += `CREATE INDEX ${indexName} ON ${name}(${columnNames});\n`;
+  });
+
   return sql;
 };
 
@@ -304,21 +371,34 @@ export const generateSQL = (nodes) => {
     }
   });
   
-  // שלב 3: הוספת UNIQUE constraints לקשרים 1:1
+  // שלב 3: הוספת UNIQUE constraints לפי cardinality
   sql += '\n-- ========================================\n';
-  sql += '-- שלב 3: UNIQUE Constraints (קשרים 1:1)\n';
+  sql += '-- שלב 3: UNIQUE Constraints (cardinality-based)\n';
   sql += '-- ========================================\n\n';
-  
+
   tables.forEach(table => {
-    const uniqueSQL = generateUniqueConstraints(table, nodes);
+    const uniqueSQL = generateUniqueConstraints(table);
     if (uniqueSQL) {
       sql += uniqueSQL;
     }
   });
-  
-  // שלב 4: דוגמאות INSERT (אופציונלי)
+
+  // שלב 4: הוספת אינדקסים לביצועים
   sql += '\n-- ========================================\n';
-  sql += '-- שלב 4: דוגמאות INSERT (אופציונלי)\n';
+  sql += '-- שלב 4: אינדקסים לביצועים\n';
+  sql += '-- ========================================\n\n';
+
+  tables.forEach(table => {
+    const indexSQL = generateIndexes(table);
+    if (indexSQL) {
+      sql += indexSQL;
+    }
+  });
+  sql += '\n';
+
+  // שלב 5: דוגמאות INSERT (אופציונלי)
+  sql += '-- ========================================\n';
+  sql += '-- שלב 5: דוגמאות INSERT (אופציונלי)\n';
   sql += '-- ========================================\n\n';
   
   tables.forEach(table => {
