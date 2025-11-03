@@ -102,9 +102,9 @@ const generateCreateTable = (table) => {
 };
 
 /**
- * 🔧 יוצר SQL statements להוספת Foreign Keys - תוקן! (v3)
- * v3: תיקון התאמת מספר העמודות ב-FK המורכב + טיפול בטבלאות ללא PK
- * 
+ * 🔧 יוצר SQL statements להוספת Foreign Keys - תוקן! (v4)
+ * v4: תמיכה ב-Foreign Key Groups - מזהה קבוצות FK ויוצר constraint מורכב לכל קבוצה
+ *
  * @param {Object} table - אובייקט הטבלה
  * @param {Array} allTables - מערך כל הטבלאות (לחיפוש)
  * @returns {String} - ALTER TABLE statements
@@ -112,88 +112,101 @@ const generateCreateTable = (table) => {
 const generateForeignKeys = (table, allTables) => {
   const { name, attributes = [] } = table.data;
   const foreignKeys = attributes.filter(attr => attr.isForeignKey && attr.references);
-  
+
   if (foreignKeys.length === 0) return '';
-  
-  // 🔧 קיבוץ FK לפי טבלת היעד - כדי ליצור FK מורכבים
-  const fkByReference = {};
-  
+
+  // 🔧 קיבוץ FK לפי foreignKeyGroup (אם קיים) או לפי references (fallback)
+  const fkGroups = new Map();
+
   foreignKeys.forEach(fk => {
-    if (!fkByReference[fk.references]) {
-      fkByReference[fk.references] = [];
+    // אם יש foreignKeyGroup, משתמשים בו לקיבוץ
+    // אחרת, קובצים לפי שם הטבלה המוזכרת (התנהגות ישנה)
+    const groupKey = fk.foreignKeyGroup || `legacy_${fk.references}`;
+
+    if (!fkGroups.has(groupKey)) {
+      fkGroups.set(groupKey, {
+        foreignKeys: [],
+        referencedTable: fk.references,
+        isGrouped: !!fk.foreignKeyGroup
+      });
     }
-    fkByReference[fk.references].push(fk);
+
+    fkGroups.get(groupKey).foreignKeys.push(fk);
   });
-  
+
   let sql = '';
-  
-  // 🔧 יצירת FK אחד לכל טבלת יעד (גם אם מורכב)
-  Object.entries(fkByReference).forEach(([referencedTableName, fks]) => {
+
+  // 🔧 יצירת FK constraint לכל קבוצה
+  fkGroups.forEach((group, groupKey) => {
+    const { foreignKeys: fks, referencedTable: referencedTableName, isGrouped } = group;
+
     const referencedTable = findTableByName(allTables, referencedTableName);
-    
+
     if (!referencedTable) {
       sql += `-- ⚠️ שגיאה: לא נמצאה טבלה ${referencedTableName}\n\n`;
       return;
     }
-    
+
     let referencedPKs = getPrimaryKeysOfTable(referencedTable);
-    
+
     // 🔧 טיפול בטבלה ללא מפתח ראשי מוגדר
     if (referencedPKs.length === 0) {
       sql += `-- ⚠️ אזהרה: טבלה ${referencedTableName} ללא מפתח ראשי מוגדר!\n`;
       sql += `-- 🔧 משתמש בכל התכונות כמפתח ראשי זמני\n`;
-      
-      // לוקח את כל התכונות שאינן FK
+
       referencedPKs = referencedTable.data.attributes.filter(attr => !attr.isForeignKey);
-      
+
       if (referencedPKs.length === 0) {
         sql += `-- ❌ שגיאה קריטית: אין תכונות ב-${referencedTableName}\n\n`;
         return;
       }
     }
-    
+
+    // 🔧 מיון ה-FKs לפי foreignKeyGroupIndex אם קיים
+    const sortedFks = isGrouped
+      ? [...fks].sort((a, b) => (a.foreignKeyGroupIndex || 0) - (b.foreignKeyGroupIndex || 0))
+      : fks;
+
     // 🔧 בניית רשימת עמודות ה-FK (צד שמאל)
-    const fkColumns = fks.map(fk => fk.name).join(', ');
-    
-    // 🔧🔧 v3: איסוף נכון של כל העמודות המוזכרות מכל ה-FKs
+    const fkColumns = sortedFks.map(fk => fk.name).join(', ');
+
+    // 🔧 בניית רשימת עמודות היעד (צד ימין)
     let referencedColumns;
-    
-    // אוסף את כל ה-referencedColumns מכל ה-FKs
-    const allReferencedColumns = [];
-    fks.forEach(fk => {
-      if (fk.referencedColumns && fk.referencedColumns.length > 0) {
-        allReferencedColumns.push(...fk.referencedColumns);
-      }
-    });
-    
-    if (allReferencedColumns.length > 0) {
-      // יש מידע מפורש - משתמשים בו
-      referencedColumns = allReferencedColumns.join(', ');
+
+    if (isGrouped && sortedFks[0].referencedColumns) {
+      // אם זו קבוצה מוגדרת, יש ל-FKs את referencedColumns - משתמשים בהם
+      referencedColumns = sortedFks[0].referencedColumns.join(', ');
     } else {
-      // אחרת - משתמשים במפתחות הראשיים לפי סדר
-      referencedColumns = referencedPKs.map(pk => pk.name).join(', ');
+      // אחרת, קיבוץ ידני של כל ה-referencedColumns
+      const allReferencedColumns = new Set();
+      sortedFks.forEach(fk => {
+        if (fk.referencedColumns && fk.referencedColumns.length > 0) {
+          fk.referencedColumns.forEach(col => allReferencedColumns.add(col));
+        }
+      });
+
+      if (allReferencedColumns.size > 0) {
+        referencedColumns = Array.from(allReferencedColumns).join(', ');
+      } else {
+        referencedColumns = referencedPKs.map(pk => pk.name).join(', ');
+      }
     }
-    
-    // 🔧 בדיקת התאמה: מספר עמודות FK = מספר עמודות referenced
-    const fkCount = fks.length;
-    const refCount = allReferencedColumns.length > 0 ? allReferencedColumns.length : referencedPKs.length;
-    
-    if (fkCount !== refCount) {
-      sql += `-- ⚠️ אזהרה: אי התאמה במספר עמודות!\n`;
-      sql += `-- FK מכיל ${fkCount} עמודות, אבל ${referencedTableName} מצפה ל-${refCount} עמודות\n`;
-      sql += `-- FK: ${fkColumns}\n`;
-      sql += `-- Referenced: ${referencedColumns}\n\n`;
-      return;
+
+    // 🔧 הוספת הערה אם מדובר בקבוצת FK מורכבת
+    if (isGrouped && sortedFks.length > 1) {
+      sql += `-- 🔑 Composite Foreign Key Group (${sortedFks.length} columns)\n`;
     }
-    
-    const constraintName = `fk_${name}_${referencedTableName}`.toLowerCase().replace(/\s/g, '_');
-    
+
+    const constraintName = isGrouped
+      ? groupKey.replace(/\s/g, '_')
+      : `fk_${name}_${referencedTableName}`.toLowerCase().replace(/\s/g, '_');
+
     sql += `ALTER TABLE ${name}\n`;
     sql += `    ADD CONSTRAINT ${constraintName}\n`;
     sql += `    FOREIGN KEY (${fkColumns})\n`;
     sql += `    REFERENCES ${referencedTableName}(${referencedColumns});\n\n`;
   });
-  
+
   return sql;
 };
 

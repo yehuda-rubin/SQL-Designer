@@ -51,7 +51,8 @@ const needsJunctionTable = (connections) => {
 /**
  * 🔧 מוסיף Foreign Key לטבלה - תוקן!
  * כעת שומר את המפתחות הראשיים האמיתיים של הטבלה המוזכרת
- * 
+ * וקובץ אותם לקבוצה אחת כאשר מדובר ב-Composite FK
+ *
  * @param {Object} table - הטבלה
  * @param {Object} referencedEntity - הישות המוזכרת (לא רק שם!)
  * @param {String} cardinality - cardinality של החיבור
@@ -59,38 +60,48 @@ const needsJunctionTable = (connections) => {
  */
 const addForeignKeyToTable = (table, referencedEntity, cardinality) => {
   if (!referencedEntity) return table;
-  
+
   const referencedTableName = referencedEntity.data.name;
-  
+
   // 🔧 מוצאים את המפתחות הראשיים האמיתיים של הטבלה המוזכרת
   const referencedPrimaryKeys = getPrimaryKeys(referencedEntity);
-  
+
   if (referencedPrimaryKeys.length === 0) {
     console.warn(`⚠️ אין מפתחות ראשיים ב-${referencedTableName}`);
     return table;
   }
-  
-  // 🔧 יצירת FK לכל עמודת PK בטבלת האב
-  const newForeignKeys = referencedPrimaryKeys.map(pkAttr => {
+
+  // 🔧 יצירת מזהה ייחודי לקבוצת FK (לטיפול ב-Composite FK)
+  const fkGroupId = `fk_${table.data.name}_${referencedTableName}_${Date.now()}`.toLowerCase();
+
+  // 🔧 בדיקה אם כבר קיים FK לטבלה זו
+  const existingFKGroup = table.data.attributes.find(attr =>
+    attr.isForeignKey && attr.references === referencedTableName
+  );
+
+  if (existingFKGroup) {
+    console.warn(`⚠️ כבר קיים FK ל-${referencedTableName} בטבלה ${table.data.name}`);
+    return table;
+  }
+
+  // 🔧 יצירת FK לכל עמודת PK בטבלת האב - כקבוצה מאוחדת
+  const newForeignKeys = referencedPrimaryKeys.map((pkAttr, index) => {
     const fkName = `${referencedTableName.toLowerCase()}_${pkAttr.name.toLowerCase()}`;
-    
-    // בדיקה אם ה-FK כבר קיים
-    const existingFK = table.data.attributes.find(attr => attr.name === fkName);
-    if (existingFK) return null;
-    
+
     return {
       name: fkName,
       type: pkAttr.type, // 🔧 משתמשים בטיפוס האמיתי של המפתח הראשי!
       isForeignKey: true,
       references: referencedTableName,
-      referencedColumns: [pkAttr.name], // 🔧 שומרים את שם העמודה המדויק!
+      referencedColumns: referencedPrimaryKeys.map(pk => pk.name), // 🔧 כל ה-FKs מקבלים את כל העמודות המוזכרות!
+      foreignKeyGroup: fkGroupId, // 🔧 מזהה קבוצת FK לקישור בין העמודות
+      foreignKeyGroupIndex: index, // 🔧 מיקום העמודה בקבוצה
+      foreignKeyGroupSize: referencedPrimaryKeys.length, // 🔧 גודל הקבוצה
       isPrimaryKey: false,
       isNullable: cardinality === '0..1' // אם אופציונלי
     };
-  }).filter(fk => fk !== null); // מסננים nulls
-  
-  if (newForeignKeys.length === 0) return table;
-  
+  });
+
   return {
     ...table,
     data: {
@@ -103,7 +114,8 @@ const addForeignKeyToTable = (table, referencedEntity, cardinality) => {
 /**
  * 🔧 יוצר טבלת חיבור (Junction Table) מקשר - תוקן!
  * כעת שומר מפתחות ראשיים מדויקים מכל הישויות
- * 
+ * וקובץ FKs לקבוצות לפי הישות המקורית
+ *
  * @param {Object} relationship - אובייקט הקשר
  * @param {Array} entities - מערך הישויות
  * @returns {Object} - אובייקט הטבלה החדשה
@@ -111,54 +123,60 @@ const addForeignKeyToTable = (table, referencedEntity, cardinality) => {
 const createJunctionTable = (relationship, entities) => {
   const { id, data } = relationship;
   const { name, connections = [], attributes = [] } = data;
-  
+
   // שם הטבלה
   const tableName = name || `Junction_${id}`;
-  
+
   // 🔧 יצירת Foreign Keys לכל ישות מחוברת - עם מפתחות ראשיים מדויקים
   const foreignKeys = [];
   const primaryKeyColumns = []; // לצורך יצירת Composite PK
-  
+
   connections
     .filter(conn => conn.entityId || conn.entityName)
     .forEach(conn => {
-      const entity = entities.find(e => 
-        e.id === conn.entityId || 
+      const entity = entities.find(e =>
+        e.id === conn.entityId ||
         e.data.name === conn.entityName
       );
-      
+
       if (!entity) {
         console.warn(`⚠️ לא נמצאה ישות עבור ${conn.entityName || conn.entityId}`);
         return;
       }
-      
+
       const entityName = entity.data.name;
       const primaryKeys = getPrimaryKeys(entity);
-      
-      // יצירת FK לכל PK של הישות
-      primaryKeys.forEach(pkAttr => {
+
+      // 🔧 יצירת מזהה ייחודי לקבוצת FK עבור הישות הזו
+      const fkGroupId = `fk_${tableName}_${entityName}_${Date.now()}`.toLowerCase();
+
+      // יצירת FK לכל PK של הישות - כקבוצה מאוחדת
+      primaryKeys.forEach((pkAttr, index) => {
         const fkName = `${entityName.toLowerCase()}_${pkAttr.name.toLowerCase()}`;
-        
+
         foreignKeys.push({
           name: fkName,
           type: pkAttr.type, // 🔧 טיפוס אמיתי
           isForeignKey: true,
           references: entityName,
-          referencedColumns: [pkAttr.name], // 🔧 עמודה מדויקת
+          referencedColumns: primaryKeys.map(pk => pk.name), // 🔧 כל ה-FKs מקבלים את כל העמודות המוזכרות!
+          foreignKeyGroup: fkGroupId, // 🔧 מזהה קבוצת FK
+          foreignKeyGroupIndex: index, // 🔧 מיקום בקבוצה
+          foreignKeyGroupSize: primaryKeys.length, // 🔧 גודל הקבוצה
           isPrimaryKey: true // חלק מה-Composite Primary Key של טבלת החיבור
         });
-        
+
         primaryKeyColumns.push(fkName);
       });
     });
-  
+
   // הוספת תכונות הקשר כעמודות רגילות
   const relationshipAttributes = attributes.map(attr => ({
     ...attr,
     isPrimaryKey: false,
     isForeignKey: false
   }));
-  
+
   return {
     id: `table_${id}`,
     type: 'table',
@@ -280,13 +298,46 @@ export const convertERDtoDSD = (nodes) => {
   
   // שלב 4: יצירת קשרים (edges) בין טבלאות לפי FK
   const dsdRelationships = [];
-  
+
   allTables.forEach(table => {
     const foreignKeys = table.data.attributes.filter(attr => attr.isForeignKey);
-    
+
+    // 🔧 קיבוץ FK לפי foreignKeyGroup כדי ליצור קשר אחד לכל קבוצה
+    const processedGroups = new Set();
+
     foreignKeys.forEach(fk => {
       const targetTable = allTables.find(t => t.data.name === fk.references);
-      if (targetTable) {
+      if (!targetTable) return;
+
+      // אם יש foreignKeyGroup, בודקים אם כבר עיבדנו את הקבוצה הזו
+      if (fk.foreignKeyGroup) {
+        if (processedGroups.has(fk.foreignKeyGroup)) {
+          return; // כבר יצרנו edge לקבוצה הזו
+        }
+        processedGroups.add(fk.foreignKeyGroup);
+
+        // מוצאים את כל ה-FKs בקבוצה
+        const groupFks = foreignKeys.filter(f => f.foreignKeyGroup === fk.foreignKeyGroup);
+        const sortedGroupFks = groupFks.sort((a, b) =>
+          (a.foreignKeyGroupIndex || 0) - (b.foreignKeyGroupIndex || 0)
+        );
+
+        // יוצרים edge אחד עבור כל הקבוצה
+        dsdRelationships.push({
+          id: `fk_${table.id}_${targetTable.id}_${fk.foreignKeyGroup}`,
+          type: 'foreignKey',
+          source: table.id,
+          target: targetTable.id,
+          data: {
+            foreignKeyGroup: fk.foreignKeyGroup,
+            foreignKeyNames: sortedGroupFks.map(f => f.name), // 🔧 כל שמות העמודות
+            referencedColumns: fk.referencedColumns || [], // 🔧 שומרים את העמודות המוזכרות
+            isNullable: fk.isNullable || false,
+            isComposite: groupFks.length > 1 // 🔧 סימון שזה FK מורכב
+          }
+        });
+      } else {
+        // FK ישן ללא קבוצה - יוצרים edge בודד
         dsdRelationships.push({
           id: `fk_${table.id}_${targetTable.id}_${fk.name}`,
           type: 'foreignKey',
@@ -294,8 +345,9 @@ export const convertERDtoDSD = (nodes) => {
           target: targetTable.id,
           data: {
             foreignKeyName: fk.name,
-            referencedColumns: fk.referencedColumns || [], // 🔧 שומרים את העמודות המוזכרות
-            isNullable: fk.isNullable || false
+            referencedColumns: fk.referencedColumns || [],
+            isNullable: fk.isNullable || false,
+            isComposite: false
           }
         });
       }

@@ -36,7 +36,40 @@ const calculateTablePositions = (tables) => {
  */
 const enrichTableData = (table) => {
   const { attributes = [] } = table.data;
-  
+
+  // 🔧 קיבוץ FKs לפי foreignKeyGroup
+  const foreignKeyGroups = new Map();
+  const processedFKs = new Set();
+
+  attributes.filter(a => a.isForeignKey).forEach(attr => {
+    if (attr.foreignKeyGroup) {
+      if (!foreignKeyGroups.has(attr.foreignKeyGroup)) {
+        const groupFks = attributes.filter(a => a.foreignKeyGroup === attr.foreignKeyGroup);
+        const sortedGroupFks = groupFks.sort((a, b) =>
+          (a.foreignKeyGroupIndex || 0) - (b.foreignKeyGroupIndex || 0)
+        );
+
+        foreignKeyGroups.set(attr.foreignKeyGroup, {
+          columns: sortedGroupFks.map(f => f.name),
+          references: attr.references,
+          referencedColumns: attr.referencedColumns || [],
+          isComposite: sortedGroupFks.length > 1
+        });
+
+        sortedGroupFks.forEach(f => processedFKs.add(f.name));
+      }
+    } else {
+      // FK ישן ללא קבוצה
+      foreignKeyGroups.set(`legacy_${attr.name}`, {
+        columns: [attr.name],
+        references: attr.references,
+        referencedColumns: attr.referencedColumns || [attr.name],
+        isComposite: false
+      });
+      processedFKs.add(attr.name);
+    }
+  });
+
   return {
     ...table,
     data: {
@@ -46,14 +79,15 @@ const enrichTableData = (table) => {
         type: attr.type,
         isPrimaryKey: attr.isPrimaryKey || false,
         isForeignKey: attr.isForeignKey || false,
+        foreignKeyGroup: attr.foreignKeyGroup || null, // 🔧 שמירת מזהה הקבוצה
+        foreignKeyGroupIndex: attr.foreignKeyGroupIndex, // 🔧 מיקום בקבוצה
+        foreignKeyGroupSize: attr.foreignKeyGroupSize, // 🔧 גודל הקבוצה
         isNullable: attr.isNullable !== false,
-        references: attr.references || null
+        references: attr.references || null,
+        referencedColumns: attr.referencedColumns || null // 🔧 עמודות מוזכרות
       })),
       primaryKeys: attributes.filter(a => a.isPrimaryKey).map(a => a.name),
-      foreignKeys: attributes.filter(a => a.isForeignKey).map(a => ({
-        column: a.name,
-        references: a.references
-      }))
+      foreignKeys: Array.from(foreignKeyGroups.values()) // 🔧 מערך של קבוצות FK
     }
   };
 };
@@ -229,6 +263,15 @@ export const generateDSDHTML = (nodes) => {
             background: #4CAF50;
             color: white;
         }
+        .badge-fk-composite {
+            background: #FF9800;
+            color: white;
+        }
+        .fk-group-indicator {
+            font-size: 0.7rem;
+            color: #FF9800;
+            margin-right: 4px;
+        }
         .stats {
             display: flex;
             justify-content: space-around;
@@ -290,11 +333,19 @@ export const generateDSDHTML = (nodes) => {
 `;
 
     columns.forEach(col => {
+      // 🔧 בדיקה אם זה חלק מקבוצת FK מורכבת
+      const isCompositeFK = col.isForeignKey && col.foreignKeyGroupSize > 1;
+      const fkGroupInfo = isCompositeFK
+        ? `<span class="fk-group-indicator">[${col.foreignKeyGroupIndex + 1}/${col.foreignKeyGroupSize}]</span>`
+        : '';
+
       html += `
                     <div class="column-row">
                         <span class="column-name">${col.name}</span>
                         ${col.isPrimaryKey ? '<span class="badge badge-pk">PK</span>' : ''}
-                        ${col.isForeignKey ? '<span class="badge badge-fk">FK</span>' : ''}
+                        ${col.isForeignKey && !isCompositeFK ? '<span class="badge badge-fk">FK</span>' : ''}
+                        ${isCompositeFK ? '<span class="badge badge-fk-composite">FK Group</span>' : ''}
+                        ${fkGroupInfo}
                         <span class="column-type">${col.type}</span>
                     </div>
 `;
