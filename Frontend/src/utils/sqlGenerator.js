@@ -212,19 +212,27 @@ const generateForeignKeys = (table, allTables) => {
       sql += `-- 🔑 Composite Foreign Key Group (${sortedFks.length} columns)\n`;
     }
 
-    // 🔧 קביעת ON DELETE behavior לפי cardinality וסוג הטבלה
+    // 🔧 קביעת ON DELETE behavior לפי cardinality וסוג הטבלה/קשר
     const cardinality = sortedFks[0].cardinality;
+    const relationshipType = sortedFks[0].relationshipType;
     let onDelete = '';
 
     if (isJunctionTable) {
       // 🔧 ב-Junction Tables (M:N) - תמיד CASCADE
       // מחיקת רשומה מטבלת האב צריכה למחוק את הקשרים בטבלת החיבור
+      // דוגמה: מחיקת Student מוחקת את כל ההרשמות שלו ב-Enrollment
       onDelete = '\n    ON DELETE CASCADE';
     } else if (cardinality === '0..1') {
+      // 🔧 קשר אופציונלי - SET NULL
+      // מחיקת ההתייחסות לא אמורה למחוק את הרשומה הראשית
+      // דוגמה: מחיקת Passport מאפסת את passport_id ב-Person
       onDelete = '\n    ON DELETE SET NULL';
-    } else if (cardinality === '1') {
-      onDelete = '\n    ON DELETE CASCADE';
-    } else if (cardinality === 'N') {
+    } else {
+      // 🔧 כל שאר הקשרים (1:1, 1:N, N) - RESTRICT
+      // עיקרון: אין מחיקה אוטומטית של נתונים, רק מניעת מחיקה עם שגיאה
+      // 1:1 - לא ניתן למחוק Department אם יש לו Manager
+      // 1:N - לא ניתן למחוק Department אם יש לו Employees
+      // N - לא ניתן למחוק אם יש תלויות
       onDelete = '\n    ON DELETE RESTRICT';
     }
 

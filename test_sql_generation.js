@@ -179,10 +179,10 @@ if (sql.includes('ON DELETE SET NULL')) {
   console.log('❌ Missing ON DELETE SET NULL for a_aa');
 }
 
-if (sql.includes('ON DELETE CASCADE')) {
-  console.log('✅ ON DELETE CASCADE for b_ba, b_bb (cardinality: 1)');
+if (sql.match(/b_ba, b_bb[\s\S]*?ON DELETE RESTRICT/)) {
+  console.log('✅ ON DELETE RESTRICT for b_ba, b_bb (1:1 relationship)');
 } else {
-  console.log('❌ Missing ON DELETE CASCADE for b_ba, b_bb');
+  console.log('❌ Missing ON DELETE RESTRICT for b_ba, b_bb');
 }
 
 if (sql.includes('ON DELETE RESTRICT')) {
