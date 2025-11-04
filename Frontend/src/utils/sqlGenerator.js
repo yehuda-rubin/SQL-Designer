@@ -113,15 +113,16 @@ const generateCreateTable = (table) => {
 };
 
 /**
- * 🔧 יוצר SQL statements להוספת Foreign Keys - תוקן! (v4)
+ * 🔧 יוצר SQL statements להוספת Foreign Keys - תוקן! (v5)
  * v4: תמיכה ב-Foreign Key Groups - מזהה קבוצות FK ויוצר constraint מורכב לכל קבוצה
+ * v5: תמיכה ב-Junction Tables - ON DELETE CASCADE עבור טבלאות חיבור
  *
  * @param {Object} table - אובייקט הטבלה
  * @param {Array} allTables - מערך כל הטבלאות (לחיפוש)
  * @returns {String} - ALTER TABLE statements
  */
 const generateForeignKeys = (table, allTables) => {
-  const { name, attributes = [] } = table.data;
+  const { name, attributes = [], isJunctionTable = false } = table.data;
   const foreignKeys = attributes.filter(attr => attr.isForeignKey && attr.references);
 
   if (foreignKeys.length === 0) return '';
@@ -211,11 +212,15 @@ const generateForeignKeys = (table, allTables) => {
       sql += `-- 🔑 Composite Foreign Key Group (${sortedFks.length} columns)\n`;
     }
 
-    // 🔧 קביעת ON DELETE behavior לפי cardinality
+    // 🔧 קביעת ON DELETE behavior לפי cardinality וסוג הטבלה
     const cardinality = sortedFks[0].cardinality;
     let onDelete = '';
 
-    if (cardinality === '0..1') {
+    if (isJunctionTable) {
+      // 🔧 ב-Junction Tables (M:N) - תמיד CASCADE
+      // מחיקת רשומה מטבלת האב צריכה למחוק את הקשרים בטבלת החיבור
+      onDelete = '\n    ON DELETE CASCADE';
+    } else if (cardinality === '0..1') {
       onDelete = '\n    ON DELETE SET NULL';
     } else if (cardinality === '1') {
       onDelete = '\n    ON DELETE CASCADE';
@@ -288,7 +293,6 @@ const generateUniqueConstraints = (table) => {
 
 /**
  * 🔧 יוצר אינדקסים על FKs לביצועים
- * מדלג על עמודות שכבר יש להן UNIQUE constraint (כי UNIQUE יוצר אינדקס אוטומטית)
  * @param {Object} table - אובייקט הטבלה
  * @returns {String} - CREATE INDEX statements
  */
@@ -307,8 +311,7 @@ const generateIndexes = (table) => {
     if (!fkGroups.has(groupKey)) {
       fkGroups.set(groupKey, {
         foreignKeys: [],
-        references: fk.references,
-        cardinality: fk.cardinality // 🔧 שומר את ה-cardinality
+        references: fk.references
       });
     }
 
@@ -317,20 +320,14 @@ const generateIndexes = (table) => {
 
   let sql = '';
 
-  // 🔧 יצירת אינדקס רק לקבוצות FK ללא UNIQUE constraint
-  // (UNIQUE constraint יוצר אינדקס אוטומטית, אז לא צריך INDEX נוסף)
+  // 🔧 יצירת אינדקס לכל קבוצת FK
   fkGroups.forEach((group, groupKey) => {
-    const { foreignKeys: fks, references, cardinality } = group;
+    const { foreignKeys: fks, references } = group;
+    const sortedFks = fks.sort((a, b) => (a.foreignKeyGroupIndex || 0) - (b.foreignKeyGroupIndex || 0));
+    const columnNames = sortedFks.map(fk => fk.name).join(', ');
+    const indexName = `idx_${name}_${references}`.toLowerCase().replace(/\s/g, '_');
 
-    // 🔧 מדלג על FK עם cardinality '0..1' או '1' (יש להם UNIQUE constraint)
-    // יוצר INDEX רק עבור cardinality 'N' (אין UNIQUE constraint)
-    if (cardinality === 'N') {
-      const sortedFks = fks.sort((a, b) => (a.foreignKeyGroupIndex || 0) - (b.foreignKeyGroupIndex || 0));
-      const columnNames = sortedFks.map(fk => fk.name).join(', ');
-      const indexName = `idx_${name}_${references}`.toLowerCase().replace(/\s/g, '_');
-
-      sql += `CREATE INDEX ${indexName} ON ${name}(${columnNames});\n`;
-    }
+    sql += `CREATE INDEX ${indexName} ON ${name}(${columnNames});\n`;
   });
 
   return sql;
@@ -393,8 +390,7 @@ export const generateSQL = (nodes) => {
 
   // שלב 4: הוספת אינדקסים לביצועים
   sql += '\n-- ========================================\n';
-  sql += '-- שלב 4: אינדקסים לביצועים (רק עבור cardinality N)\n';
-  sql += '-- הערה: עמודות עם UNIQUE constraint (0..1, 1) כבר יש להן אינדקס אוטומטי\n';
+  sql += '-- שלב 4: אינדקסים לביצועים\n';
   sql += '-- ========================================\n\n';
 
   tables.forEach(table => {

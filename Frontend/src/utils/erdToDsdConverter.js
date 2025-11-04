@@ -171,6 +171,7 @@ const createJunctionTable = (relationship, entities) => {
           foreignKeyGroup: fkGroupId, // 🔧 מזהה קבוצת FK
           foreignKeyGroupIndex: index, // 🔧 מיקום בקבוצה
           foreignKeyGroupSize: primaryKeys.length, // 🔧 גודל הקבוצה
+          cardinality: conn.cardinality || 'N', // 🔧 שמירת הקרדינליות (בדרך כלל 'N' ב-junction table)
           isPrimaryKey: true // חלק מה-Composite Primary Key של טבלת החיבור
         });
 
