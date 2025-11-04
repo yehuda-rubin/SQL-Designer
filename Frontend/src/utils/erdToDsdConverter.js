@@ -56,9 +56,10 @@ const needsJunctionTable = (connections) => {
  * @param {Object} table - הטבלה
  * @param {Object} referencedEntity - הישות המוזכרת (לא רק שם!)
  * @param {String} cardinality - cardinality של החיבור
+ * @param {String} relationshipType - סוג הקשר ('1:1' או '1:N')
  * @returns {Object} - הטבלה המעודכנת
  */
-const addForeignKeyToTable = (table, referencedEntity, cardinality) => {
+const addForeignKeyToTable = (table, referencedEntity, cardinality, relationshipType = '1:N') => {
   if (!referencedEntity) return table;
 
   const referencedTableName = referencedEntity.data.name;
@@ -105,6 +106,7 @@ const addForeignKeyToTable = (table, referencedEntity, cardinality) => {
       foreignKeyGroupIndex: index, // 🔧 מיקום העמודה בקבוצה
       foreignKeyGroupSize: referencedPrimaryKeys.length, // 🔧 גודל הקבוצה
       cardinality: cardinality, // 🔧 שמירת הקרדינליות המקורית
+      relationshipType: relationshipType, // 🔧 שמירת סוג הקשר (1:1 או 1:N)
       isPrimaryKey: false,
       isNullable: cardinality === '0..1' // אם אופציונלי
     };
@@ -227,49 +229,57 @@ const entityToTable = (entity) => {
  */
 const handleOneToManyOrOneToOne = (relationship, tables, entities) => {
   const { connections = [] } = relationship.data;
-  
+
   if (connections.length !== 2) return tables;
-  
+
   const [conn1, conn2] = connections;
-  
+
+  // 🔧 זיהוי סוג הקשר: 1:1 או 1:N
+  const isOneToOne =
+    (conn1.cardinality === '1' || conn1.cardinality === '0..1') &&
+    (conn2.cardinality === '1' || conn2.cardinality === '0..1');
+
+  const relationshipType = isOneToOne ? '1:1' : '1:N';
+
   // קביעת איזה צד מקבל את ה-FK
   let sourceTable, targetEntity, targetCardinality;
-  
+
   if (conn1.cardinality === 'N' || conn1.cardinality === '0..1') {
     // conn1 בצד ה-Many או האופציונלי - הוא מקבל את ה-FK
-    sourceTable = tables.find(t => 
-      t.id === conn1.entityId || 
+    sourceTable = tables.find(t =>
+      t.id === conn1.entityId ||
       t.data.name === conn1.entityName
     );
-    targetEntity = entities.find(e => 
-      e.id === conn2.entityId || 
+    targetEntity = entities.find(e =>
+      e.id === conn2.entityId ||
       e.data.name === conn2.entityName
     );
     targetCardinality = conn1.cardinality;
   } else {
     // conn2 בצד ה-Many או האופציונלי - הוא מקבל את ה-FK
-    sourceTable = tables.find(t => 
-      t.id === conn2.entityId || 
+    sourceTable = tables.find(t =>
+      t.id === conn2.entityId ||
       t.data.name === conn2.entityName
     );
-    targetEntity = entities.find(e => 
-      e.id === conn1.entityId || 
+    targetEntity = entities.find(e =>
+      e.id === conn1.entityId ||
       e.data.name === conn1.entityName
     );
     targetCardinality = conn2.cardinality;
   }
-  
+
   if (!sourceTable || !targetEntity) return tables;
-  
-  // 🔧 הוספת ה-FK - עכשיו מעביר את כל הישות ולא רק את השם
+
+  // 🔧 הוספת ה-FK - עכשיו מעביר גם את סוג הקשר
   const updatedSourceTable = addForeignKeyToTable(
-    sourceTable, 
+    sourceTable,
     targetEntity, // 🔧 מעביר ישות שלמה!
-    targetCardinality
+    targetCardinality,
+    relationshipType // 🔧 מעביר את סוג הקשר
   );
-  
+
   // החזרת המערך המעודכן
-  return tables.map(t => 
+  return tables.map(t =>
     t.id === updatedSourceTable.id ? updatedSourceTable : t
   );
 };

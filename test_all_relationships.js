@@ -153,8 +153,8 @@ runTest(
 );
 
 runTest(
-  sql.match(/ALTER TABLE Manager[\s\S]*?REFERENCES Department[\s\S]*?ON DELETE CASCADE/),
-  '1:1 - Manager FK has ON DELETE CASCADE'
+  sql.match(/ALTER TABLE Manager[\s\S]*?REFERENCES Department[\s\S]*?ON DELETE RESTRICT/),
+  '1:1 - Manager FK has ON DELETE RESTRICT (prevents orphaned managers)'
 );
 
 // Test 1:N relationship (Employee has FK to Department)
