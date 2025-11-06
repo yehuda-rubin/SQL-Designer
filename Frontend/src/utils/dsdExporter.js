@@ -140,53 +140,103 @@ export const downloadDSDJSON = (nodes, filename = 'database_schema_dsd.json') =>
 };
 
 /**
- * קובע את סוג הקשר וצבעו
- * @param {Object} sourceTable - טבלת המקור
+ * קובע את סוג הקשר וצבעו לפי cardinality אמיתי
  * @param {Object} fk - Foreign Key
+ * @param {Array} relationships - מערך relationships עם cardinality
+ * @param {Object} sourceTable - טבלת המקור
+ * @param {Object} targetTable - טבלת היעד
  * @returns {Object} - מידע על הקשר
  */
-const determineRelationshipType = (sourceTable, fk) => {
-  const isJunction = sourceTable.data.isJunctionTable;
-  const isOptional = fk.columns.some(colName => {
-    const col = sourceTable.data.columns.find(c => c.name === colName);
-    return col && col.isNullable;
-  });
+const determineRelationshipType = (fk, relationships, sourceTable, targetTable) => {
+  // ברירת מחדל
+  let sourceCardinality = 'N';
+  let isOptional = false;
   
-  // Junction Table = Many-to-Many
-  if (isJunction) {
+  // 🔍 שלב 1: נסה לקרוא cardinality מה-column attributes (המקור הכי מדויק)
+  if (fk.columns && fk.columns.length > 0) {
+    const firstColName = Array.isArray(fk.columns) ? fk.columns[0] : fk.columns;
+    const col = sourceTable.data.columns.find(c => c.name === firstColName);
+    
+    if (col) {
+      // קרא cardinality מה-column
+      if (col.cardinality) {
+        sourceCardinality = col.cardinality;
+      }
+      // בדוק אם nullable
+      if (col.isNullable === true) {
+        isOptional = true;
+      }
+    }
+  }
+  
+  // 🔍 שלב 2: אם לא מצאנו, נסה לקרוא מ-relationships
+  if (sourceCardinality === 'N' && relationships && relationships.length > 0) {
+    for (const rel of relationships) {
+      if (!rel.data) continue;
+      
+      // בדיקה אם זה ה-relationship הנכון
+      if (rel.source === sourceTable.id && rel.target === targetTable.id) {
+        if (rel.data.sourceCardinality) {
+          sourceCardinality = rel.data.sourceCardinality;
+          break;
+        }
+      }
+    }
+  }
+  
+  // 📊 קביעת סוג הקשר לפי cardinality
+  const isJunction = sourceTable.data.isJunctionTable;
+  
+  // 🔴 N:M - רק אם זה Junction ויש 2+ FKs עם cardinality='N'
+  if (isJunction && sourceCardinality === 'N') {
     return {
       type: 'N:M',
       color: '#e74c3c', // אדום
       label: 'N:M',
-      strokeWidth: '2.5'
+      strokeWidth: '2.5',
+      cardinality: sourceCardinality
     };
   }
   
-  // Optional = 0..1:N or 1:1
-  if (isOptional) {
+  // 🟢 0..1 - אופציונלי (קו מקווקו)
+  if (sourceCardinality === '0..1' || isOptional) {
     return {
       type: '0..1:N',
       color: '#27ae60', // ירוק
       label: '0..1:N',
-      strokeWidth: '2'
+      strokeWidth: '2',
+      cardinality: sourceCardinality
     };
   }
   
-  // Required = 1:N
+  // 🔵 1 - חובה (קו רציף)
+  if (sourceCardinality === '1') {
+    return {
+      type: '1:N',
+      color: '#3498db', // כחול
+      label: '1:N',
+      strokeWidth: '2',
+      cardinality: sourceCardinality
+    };
+  }
+  
+  // 🔵 N - Many (ברירת מחדל - כחול)
   return {
     type: '1:N',
     color: '#3498db', // כחול
     label: '1:N',
-    strokeWidth: '2'
+    strokeWidth: '2',
+    cardinality: sourceCardinality
   };
 };
 
 /**
  * מייצר קווי קשר SVG בין טבלאות - גרסה משופרת
  * @param {Array} tables - מערך הטבלאות
+ * @param {Array} relationships - מערך ה-relationships עם cardinality
  * @returns {String} - SVG paths
  */
-const generateConnectionLines = (tables) => {
+const generateConnectionLines = (tables, relationships = []) => {
   const lines = [];
   const TABLE_WIDTH = 320;
   const TABLE_HEADER_HEIGHT = 45;
@@ -207,8 +257,8 @@ const generateConnectionLines = (tables) => {
       const targetTable = tableMap.get(fk.references);
       if (!targetTable) return;
       
-      // קביעת סוג הקשר וצבעו
-      const relationship = determineRelationshipType(sourceTable, fk);
+      // קביעת סוג הקשר וצבעו - עכשיו עם relationships!
+      const relationship = determineRelationshipType(fk, relationships, sourceTable, targetTable);
       
       // חישוב נקודות התחלה וסיום
       const sourceX = sourceTable.position.x + TABLE_WIDTH;
@@ -287,13 +337,13 @@ const generateConnectionLines = (tables) => {
  */
 export const generateDSDHTML = (nodes) => {
   const dsd = exportDSDGraphical(nodes);
-  const { tables } = dsd.schema;
+  const { tables, relationships } = dsd.schema;
   
   // חישוב גודל ה-canvas
   const maxX = Math.max(...tables.map(t => t.position.x)) + 400;
   const maxY = Math.max(...tables.map(t => t.position.y)) + 350;
   
-  const connectionLines = generateConnectionLines(tables);
+  const connectionLines = generateConnectionLines(tables, relationships);
   
   let html = `
 <!DOCTYPE html>
