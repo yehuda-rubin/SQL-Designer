@@ -1,6 +1,6 @@
 /**
- * DSD Exporter - Graphical Format
- * מייצא את ה-DSD בפורמט גרפי (JSON) שניתן לטעון ולצפות בו
+ * DSD Exporter - Professional Graphical Format
+ * מייצא את ה-DSD בפורמט גרפי מקצועי עם קווי קשר
  */
 
 import { convertERDtoDSD } from './erdToDsdConverter';
@@ -11,9 +11,9 @@ import { convertERDtoDSD } from './erdToDsdConverter';
  * @returns {Array} - מערך טבלאות עם מיקומים מעודכנים
  */
 const calculateTablePositions = (tables) => {
-  const SPACING_X = 350;
-  const SPACING_Y = 250;
-  const TABLES_PER_ROW = 4;
+  const SPACING_X = 400;
+  const SPACING_Y = 350;
+  const TABLES_PER_ROW = 3;
   
   return tables.map((table, index) => {
     const row = Math.floor(index / TABLES_PER_ROW);
@@ -22,8 +22,8 @@ const calculateTablePositions = (tables) => {
     return {
       ...table,
       position: {
-        x: col * SPACING_X + 50,
-        y: row * SPACING_Y + 50
+        x: col * SPACING_X + 100,
+        y: row * SPACING_Y + 150
       }
     };
   });
@@ -37,7 +37,7 @@ const calculateTablePositions = (tables) => {
 const enrichTableData = (table) => {
   const { attributes = [] } = table.data;
 
-  // 🔧 קיבוץ FKs לפי foreignKeyGroup
+  // קיבוץ FKs לפי foreignKeyGroup
   const foreignKeyGroups = new Map();
   const processedFKs = new Set();
 
@@ -59,7 +59,6 @@ const enrichTableData = (table) => {
         sortedGroupFks.forEach(f => processedFKs.add(f.name));
       }
     } else {
-      // FK ישן ללא קבוצה
       foreignKeyGroups.set(`legacy_${attr.name}`, {
         columns: [attr.name],
         references: attr.references,
@@ -79,15 +78,15 @@ const enrichTableData = (table) => {
         type: attr.type,
         isPrimaryKey: attr.isPrimaryKey || false,
         isForeignKey: attr.isForeignKey || false,
-        foreignKeyGroup: attr.foreignKeyGroup || null, // 🔧 שמירת מזהה הקבוצה
-        foreignKeyGroupIndex: attr.foreignKeyGroupIndex, // 🔧 מיקום בקבוצה
-        foreignKeyGroupSize: attr.foreignKeyGroupSize, // 🔧 גודל הקבוצה
+        foreignKeyGroup: attr.foreignKeyGroup || null,
+        foreignKeyGroupIndex: attr.foreignKeyGroupIndex,
+        foreignKeyGroupSize: attr.foreignKeyGroupSize,
         isNullable: attr.isNullable !== false,
         references: attr.references || null,
-        referencedColumns: attr.referencedColumns || null // 🔧 עמודות מוזכרות
+        referencedColumns: attr.referencedColumns || null
       })),
       primaryKeys: attributes.filter(a => a.isPrimaryKey).map(a => a.name),
-      foreignKeys: Array.from(foreignKeyGroups.values()) // 🔧 מערך של קבוצות FK
+      foreignKeys: Array.from(foreignKeyGroups.values())
     }
   };
 };
@@ -100,10 +99,7 @@ const enrichTableData = (table) => {
 export const exportDSDGraphical = (nodes) => {
   const { tables, relationships } = convertERDtoDSD(nodes);
   
-  // חישוב מיקומים אוטומטיים
   const positionedTables = calculateTablePositions(tables);
-  
-  // הוספת מידע מפורט
   const enrichedTables = positionedTables.map(enrichTableData);
   
   return {
@@ -144,13 +140,160 @@ export const downloadDSDJSON = (nodes, filename = 'database_schema_dsd.json') =>
 };
 
 /**
- * מייצר HTML מעוצב לתצוגת DSD
+ * קובע את סוג הקשר וצבעו
+ * @param {Object} sourceTable - טבלת המקור
+ * @param {Object} fk - Foreign Key
+ * @returns {Object} - מידע על הקשר
+ */
+const determineRelationshipType = (sourceTable, fk) => {
+  const isJunction = sourceTable.data.isJunctionTable;
+  const isOptional = fk.columns.some(colName => {
+    const col = sourceTable.data.columns.find(c => c.name === colName);
+    return col && col.isNullable;
+  });
+  
+  // Junction Table = Many-to-Many
+  if (isJunction) {
+    return {
+      type: 'N:M',
+      color: '#e74c3c', // אדום
+      label: 'N:M',
+      strokeWidth: '2.5'
+    };
+  }
+  
+  // Optional = 0..1:N or 1:1
+  if (isOptional) {
+    return {
+      type: '0..1:N',
+      color: '#27ae60', // ירוק
+      label: '0..1:N',
+      strokeWidth: '2'
+    };
+  }
+  
+  // Required = 1:N
+  return {
+    type: '1:N',
+    color: '#3498db', // כחול
+    label: '1:N',
+    strokeWidth: '2'
+  };
+};
+
+/**
+ * מייצר קווי קשר SVG בין טבלאות - גרסה משופרת
+ * @param {Array} tables - מערך הטבלאות
+ * @returns {String} - SVG paths
+ */
+const generateConnectionLines = (tables) => {
+  const lines = [];
+  const TABLE_WIDTH = 320;
+  const TABLE_HEADER_HEIGHT = 45;
+  const ROW_HEIGHT = 35;
+  const ARROW_OFFSET = 10;
+  
+  // מיפוי טבלאות לפי שם
+  const tableMap = new Map();
+  tables.forEach(table => {
+    tableMap.set(table.data.name, table);
+  });
+  
+  // יצירת קווים עבור כל FK
+  tables.forEach(sourceTable => {
+    if (!sourceTable.data.foreignKeys) return;
+    
+    sourceTable.data.foreignKeys.forEach((fk, fkIndex) => {
+      const targetTable = tableMap.get(fk.references);
+      if (!targetTable) return;
+      
+      // קביעת סוג הקשר וצבעו
+      const relationship = determineRelationshipType(sourceTable, fk);
+      
+      // חישוב נקודות התחלה וסיום
+      const sourceX = sourceTable.position.x + TABLE_WIDTH;
+      const sourceY = sourceTable.position.y + TABLE_HEADER_HEIGHT + (fkIndex + 1) * ROW_HEIGHT + ROW_HEIGHT/2;
+      
+      const targetX = targetTable.position.x;
+      const targetY = targetTable.position.y + TABLE_HEADER_HEIGHT / 2;
+      
+      // יצירת path אורתוגונלי (קווים ישרים)
+      const midX = (sourceX + targetX) / 2;
+      
+      // בחירת נתיב לפי מיקום יחסי
+      let path;
+      if (sourceTable.position.y < targetTable.position.y - 100) {
+        // מקור למעלה מהיעד - קו למטה
+        path = `M ${sourceX} ${sourceY} L ${midX} ${sourceY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
+      } else if (sourceTable.position.y > targetTable.position.y + 100) {
+        // מקור למטה מהיעד - קו למעלה
+        path = `M ${sourceX} ${sourceY} L ${midX} ${sourceY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
+      } else {
+        // באותו גובה בערך - קו ישר
+        path = `M ${sourceX} ${sourceY} L ${midX} ${sourceY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
+      }
+      
+      // חישוב מיקום התווית
+      const labelX = midX;
+      const labelY = (sourceY + targetY) / 2 - 10;
+      
+      // סגנון קו
+      const strokeDasharray = relationship.type === '0..1:N' ? '5,5' : 'none';
+      const compositeMarker = fk.isComposite ? ' (Composite)' : '';
+      
+      lines.push(`
+        <!-- Connection: ${sourceTable.data.name} → ${targetTable.data.name} -->
+        <g class="relationship-line">
+          <path 
+            d="${path}" 
+            stroke="${relationship.color}" 
+            stroke-width="${relationship.strokeWidth}" 
+            stroke-dasharray="${strokeDasharray}"
+            fill="none" 
+            marker-end="url(#arrowhead-${relationship.type.replace(/[:.]/g, '')})"
+            opacity="0.85"
+          />
+          
+          <!-- תווית סוג הקשר -->
+          <text 
+            x="${labelX}" 
+            y="${labelY}" 
+            text-anchor="middle" 
+            font-size="11" 
+            font-weight="bold" 
+            fill="${relationship.color}"
+            style="text-shadow: 0 0 3px white, 0 0 3px white, 0 0 3px white;"
+          >
+            ${relationship.label}${compositeMarker}
+          </text>
+          
+          ${fk.isComposite ? `
+          <title>Composite FK: ${fk.columns.join(', ')} → ${fk.referencedColumns.join(', ')}</title>
+          ` : `
+          <title>${fk.columns[0]} → ${fk.referencedColumns[0]}</title>
+          `}
+        </g>
+      `);
+    });
+  });
+  
+  return lines.join('\n');
+};
+
+/**
+ * מייצר HTML מעוצב לתצוגת DSD מקצועית
  * @param {Array} nodes - מערך של nodes
  * @returns {String} - HTML string
  */
 export const generateDSDHTML = (nodes) => {
   const dsd = exportDSDGraphical(nodes);
-  const { tables, relationships } = dsd.schema;
+  const { tables } = dsd.schema;
+  
+  // חישוב גודל ה-canvas
+  const maxX = Math.max(...tables.map(t => t.position.x)) + 400;
+  const maxY = Math.max(...tables.map(t => t.position.y)) + 350;
+  
+  const connectionLines = generateConnectionLines(tables);
   
   let html = `
 <!DOCTYPE html>
@@ -158,206 +301,305 @@ export const generateDSDHTML = (nodes) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Database Schema Diagram (DSD)</title>
+    <title>Database Schema Diagram (DSD) - Professional</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
+        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: #f5f5f5;
             padding: 20px;
-            min-height: 100vh;
         }
+        
         .container {
-            max-width: 1400px;
+            max-width: ${maxX + 100}px;
             margin: 0 auto;
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            padding: 30px;
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
+        
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px 30px;
+            border-bottom: 3px solid #34495e;
+        }
+        
         h1 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 2.5rem;
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 5px;
         }
+        
         .metadata {
-            text-align: center;
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
+            color: #bdc3c7;
+            margin-top: 5px;
         }
-        .tables-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 20px;
-            margin-top: 30px;
+        
+        .diagram-area {
+            position: relative;
+            width: 100%;
+            height: ${maxY + 100}px;
+            background: white;
+            overflow: auto;
         }
-        .table-card {
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            overflow: hidden;
-            transition: transform 0.2s, box-shadow 0.2s;
+        
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        .relationship-line {
+            transition: opacity 0.2s;
+        }
+        
+        .relationship-line:hover {
+            opacity: 1 !important;
+        }
+        
+        .relationship-line text {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            pointer-events: none;
+        }
+        
+        .table-box {
+            position: absolute;
+            border: 2px solid #2c3e50;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            min-width: 320px;
+            z-index: 10;
+        }
+        
+        .table-header {
+            background: #34495e;
+            color: white;
+            padding: 12px 15px;
+            border-bottom: 2px solid #2c3e50;
+            font-weight: 600;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .junction-indicator {
+            background: #e74c3c;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+        
+        .column-row {
+            padding: 8px 15px;
+            border-bottom: 1px solid #ecf0f1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
             background: white;
         }
-        .table-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-        }
-        .table-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px;
-            font-weight: bold;
-            font-size: 1.1rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .junction-badge {
-            background: rgba(255,255,255,0.3);
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-        }
-        .table-body {
-            padding: 0;
-        }
-        .column-row {
-            padding: 10px 15px;
-            border-bottom: 1px solid #f0f0f0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+        
         .column-row:last-child {
             border-bottom: none;
         }
+        
+        .column-row:hover {
+            background: #f8f9fa;
+        }
+        
+        .key-icon {
+            font-size: 0.9rem;
+            width: 20px;
+            text-align: center;
+        }
+        
+        .pk-icon {
+            color: #f39c12;
+        }
+        
+        .fk-icon {
+            color: #3498db;
+        }
+        
         .column-name {
-            font-weight: 500;
-            color: #333;
             flex: 1;
+            font-weight: 500;
+            color: #2c3e50;
         }
+        
         .column-type {
-            color: #666;
-            font-size: 0.85rem;
-            background: #f5f5f5;
-            padding: 2px 8px;
-            border-radius: 4px;
+            color: #7f8c8d;
+            font-size: 0.75rem;
+            background: #ecf0f1;
+            padding: 3px 8px;
+            border-radius: 3px;
         }
-        .badge {
+        
+        .fk-badge {
             font-size: 0.7rem;
             padding: 2px 6px;
             border-radius: 3px;
+            background: #3498db;
+            color: white;
             font-weight: 600;
         }
-        .badge-pk {
-            background: #ffd700;
-            color: #333;
+        
+        .composite-indicator {
+            font-size: 0.65rem;
+            color: #e74c3c;
+            font-weight: 600;
         }
-        .badge-fk {
-            background: #4CAF50;
-            color: white;
-        }
-        .badge-fk-composite {
-            background: #FF9800;
-            color: white;
-        }
-        .fk-group-indicator {
-            font-size: 0.7rem;
-            color: #FF9800;
-            margin-right: 4px;
-        }
-        .stats {
+        
+        .legend {
+            padding: 20px 30px;
+            background: #ecf0f1;
+            border-top: 2px solid #bdc3c7;
             display: flex;
-            justify-content: space-around;
-            margin: 20px 0;
-            padding: 20px;
-            background: #f9f9f9;
-            border-radius: 8px;
+            gap: 30px;
+            flex-wrap: wrap;
         }
-        .stat-item {
-            text-align: center;
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            color: #2c3e50;
         }
-        .stat-value {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #667eea;
+        
+        .legend-line {
+            width: 40px;
+            height: 2px;
+            background: #333;
         }
-        .stat-label {
-            color: #666;
-            font-size: 0.9rem;
-            margin-top: 5px;
+        
+        .legend-line.dashed {
+            border-top: 2px dashed #333;
+            background: none;
+            height: 0;
+        }
+        
+        .arrow-symbol {
+            font-size: 1.2rem;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📊 Database Schema Diagram</h1>
-        <div class="metadata">
-            נוצר: ${new Date().toLocaleString('he-IL')} | PostgreSQL
-        </div>
-        
-        <div class="stats">
-            <div class="stat-item">
-                <div class="stat-value">${tables.length}</div>
-                <div class="stat-label">טבלאות</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">${relationships.length}</div>
-                <div class="stat-label">קשרים</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">${tables.filter(t => t.data.isJunctionTable).length}</div>
-                <div class="stat-label">טבלאות חיבור</div>
+        <div class="header">
+            <h1>📊 Database Schema Diagram (DSD)</h1>
+            <div class="metadata">
+                ${dsd.database} | נוצר: ${new Date(dsd.generatedAt).toLocaleString('he-IL')} | 
+                ${dsd.metadata.totalTables} טבלאות | ${dsd.metadata.totalRelationships} קשרים
             </div>
         </div>
         
-        <div class="tables-grid">
+        <div class="diagram-area">
+            <svg>
+                <defs>
+                    <!-- Arrowheads בצבעים שונים -->
+                    <marker id="arrowhead-1N" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="#3498db" />
+                    </marker>
+                    <marker id="arrowhead-01N" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="#27ae60" />
+                    </marker>
+                    <marker id="arrowhead-NM" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="#e74c3c" />
+                    </marker>
+                </defs>
+                ${connectionLines}
+            </svg>
 `;
 
+  // יצירת טבלאות
   tables.forEach(table => {
-    const { name, columns, isJunctionTable } = table.data;
+    const isJunction = table.data.isJunctionTable;
     
     html += `
-            <div class="table-card">
+            <div class="table-box" style="left: ${table.position.x}px; top: ${table.position.y}px;">
                 <div class="table-header">
-                    <span>🗂️ ${name}</span>
-                    ${isJunctionTable ? '<span class="junction-badge">טבלת חיבור</span>' : ''}
+                    ${table.data.name}
+                    ${isJunction ? '<span class="junction-indicator">JUNCTION</span>' : ''}
                 </div>
-                <div class="table-body">
 `;
 
-    columns.forEach(col => {
-      // 🔧 בדיקה אם זה חלק מקבוצת FK מורכבת
-      const isCompositeFK = col.isForeignKey && col.foreignKeyGroupSize > 1;
-      const fkGroupInfo = isCompositeFK
-        ? `<span class="fk-group-indicator">[${col.foreignKeyGroupIndex + 1}/${col.foreignKeyGroupSize}]</span>`
+    // עמודות
+    table.data.columns.forEach(col => {
+      const pkIcon = col.isPrimaryKey ? '<span class="key-icon pk-icon">🔑</span>' : '<span class="key-icon"></span>';
+      const fkIcon = col.isForeignKey ? '<span class="key-icon fk-icon">➜</span>' : '';
+      
+      const isCompositeFK = col.foreignKeyGroup && col.foreignKeyGroupSize > 1;
+      const compositeInfo = isCompositeFK 
+        ? `<span class="composite-indicator">[${col.foreignKeyGroupIndex + 1}/${col.foreignKeyGroupSize}]</span>` 
+        : '';
+      
+      const fkBadge = col.isForeignKey && col.references 
+        ? `<span class="fk-badge">→ ${col.references}</span>` 
         : '';
 
       html += `
-                    <div class="column-row">
-                        <span class="column-name">${col.name}</span>
-                        ${col.isPrimaryKey ? '<span class="badge badge-pk">PK</span>' : ''}
-                        ${col.isForeignKey && !isCompositeFK ? '<span class="badge badge-fk">FK</span>' : ''}
-                        ${isCompositeFK ? '<span class="badge badge-fk-composite">FK Group</span>' : ''}
-                        ${fkGroupInfo}
-                        <span class="column-type">${col.type}</span>
-                    </div>
+                <div class="column-row">
+                    ${pkIcon}
+                    ${fkIcon}
+                    <span class="column-name">${col.name}</span>
+                    ${compositeInfo}
+                    ${fkBadge}
+                    <span class="column-type">${col.type}</span>
+                </div>
 `;
     });
 
     html += `
-                </div>
             </div>
 `;
   });
 
   html += `
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <span class="arrow-symbol">🔑</span>
+                <span>Primary Key</span>
+            </div>
+            <div class="legend-item">
+                <span class="arrow-symbol">➜</span>
+                <span>Foreign Key</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line" style="background: #3498db; height: 3px;"></div>
+                <span style="color: #3498db; font-weight: bold;">1:N</span>
+                <span>One-to-Many (Required)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line dashed" style="border-color: #27ae60; height: 0;"></div>
+                <span style="color: #27ae60; font-weight: bold;">0..1:N</span>
+                <span>One-to-Many (Optional)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line" style="background: #e74c3c; height: 3px;"></div>
+                <span style="color: #e74c3c; font-weight: bold;">N:M</span>
+                <span>Many-to-Many (via Junction)</span>
+            </div>
+            <div class="legend-item">
+                <span style="color: #e74c3c; font-weight: bold;">[1/2]</span>
+                <span>Composite Foreign Key</span>
+            </div>
         </div>
     </div>
 </body>
