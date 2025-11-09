@@ -1,23 +1,25 @@
 /**
- * תיקון ללוגיקת יצירת טבלאות - מטפל בקרדינליות נכון
+ * Fix for table creation logic – handles cardinality correctly
  *
- * הבעיה המקורית:
- * הקוד יוצר surrogate key (id SERIAL) לכל טבלה עם FKs שאינה junction table.
- * זה פגום כי טבלאות קשר עם קרדינליות מעורבת (0..1, 1, N) צריכות natural key.
+ * Original problem:
+ * The code creates a surrogate key (id SERIAL) for every table with FKs
+ * that is not a junction table.
+ * This is incorrect because relationship tables with mixed cardinalities
+ * (0..1, 1, N) must use a natural key.
  *
- * הפתרון:
- * זיהוי אוטומטי של FK עם cardinality='1' ושימוש בו כ-PK טבעי.
+ * Solution:
+ * Automatically detect FK with cardinality='1' and use it as the natural PK.
  */
 
 /**
- * 🔧 זיהוי ה-PK הטבעי (Natural Key) לטבלת קשר
- * @param {Array} foreignKeyColumns - עמודות ה-FK
- * @returns {Array|null} - FK columns שיכולים לשמש כ-PK, או null
+ * 🔧 Detect the natural primary key (Natural Key) for a relationship table
+ * @param {Array} foreignKeyColumns - FK columns
+ * @returns {Array|null} - FK columns that can serve as PK, or null
  */
 const findNaturalPrimaryKey = (foreignKeyColumns) => {
   if (foreignKeyColumns.length === 0) return null;
 
-  // מחפשים קבוצות FK עם cardinality='1' (Mandatory once)
+  // Look for FK groups with cardinality='1' (Mandatory once)
   const fkGroups = new Map();
 
   foreignKeyColumns.forEach(fk => {
@@ -34,87 +36,87 @@ const findNaturalPrimaryKey = (foreignKeyColumns) => {
     fkGroups.get(groupKey).columns.push(fk);
   });
 
-  // מחפשים קבוצת FK עם cardinality='1'
+  // Find FK group with cardinality='1'
   for (const [groupKey, group] of fkGroups) {
     if (group.cardinality === '1') {
-      // ✅ מצאנו! זה ה-PK הטבעי
+      // ✅ Found! This is the natural PK
       return group.columns;
     }
   }
 
-  // אם אין FK עם cardinality='1', אין PK טבעי
+  // If no FK with cardinality='1', there is no natural PK
   return null;
 };
 
 /**
- * 🔧 יוצר SQL statement ליצירת טבלה (גרסה מתוקנת)
- * @param {Object} table - אובייקט הטבלה
+ * 🔧 Generates a CREATE TABLE SQL statement (fixed version)
+ * @param {Object} table - table object
  * @returns {String} - CREATE TABLE statement
  */
 const generateCreateTable_FIXED = (table) => {
   const { name, attributes = [], isJunctionTable = false } = table.data;
 
   if (attributes.length === 0) {
-    return `-- טבלה ${name} ללא עמודות\n`;
+    return `-- Table ${name} has no columns\n`;
   }
 
-  // פילוח עמודות לפי סוג
+  // Split attributes by type
   const regularColumns = attributes.filter(attr => !attr.isForeignKey);
   const foreignKeyColumns = attributes.filter(attr => attr.isForeignKey);
   let primaryKeys = attributes.filter(attr => attr.isPrimaryKey);
 
-  // 🔧 זיהוי ה-PK הטבעי (אם קיים)
+  // 🔧 Detect natural PK (if exists)
   const naturalPK = findNaturalPrimaryKey(foreignKeyColumns);
 
-  // 🔧 החלטה: האם צריך surrogate key?
+  // 🔧 Decide whether to add a surrogate key
   const needsSurrogateKey =
-    foreignKeyColumns.length > 0 &&  // יש FKs
-    !isJunctionTable &&              // לא junction table
-    !naturalPK;                      // ואין PK טבעי
+    foreignKeyColumns.length > 0 &&  // has FKs
+    !isJunctionTable &&              // not a junction table
+    !naturalPK;                      // no natural PK
 
   let sql = `CREATE TABLE ${name} (\n`;
   const allColumns = [];
 
-  // 🔧 אם צריך surrogate key - מוסיפים id SERIAL
+  // 🔧 If a surrogate key is needed – add id SERIAL
   if (needsSurrogateKey) {
     allColumns.push(`    id SERIAL PRIMARY KEY`);
   }
 
-  // 🔧 טיפול בטבלה ללא מפתח ראשי מוגדר
+  // 🔧 Handle table with no defined primary key
   if (primaryKeys.length === 0 && !needsSurrogateKey && !naturalPK) {
-    sql += `    -- ⚠️ אזהרה: לא הוגדר מפתח ראשי!\n`;
-    sql += `    -- 🔧 משתמש בתכונה הראשונה כמפתח ראשי זמני\n`;
+    sql += `    -- ⚠️ Warning: no primary key defined!\n`;
+    sql += `    -- 🔧 Using the first attribute as a temporary primary key\n`;
     primaryKeys = regularColumns.length > 0 ? [regularColumns[0]] : (attributes.length > 0 ? [attributes[0]] : []);
   }
 
-  // יצירת עמודות רגילות
+  // Create regular columns
   const columnDefinitions = regularColumns.map(attr => {
     const nullable = attr.isNullable !== false ? '' : ' NOT NULL';
     return `    ${attr.name} ${convertDataType(attr.type)}${nullable}`;
   });
 
-  // יצירת עמודות FK
+  // Create FK columns
   const fkColumnDefinitions = foreignKeyColumns.map(attr => {
-    // 🔧 NOT NULL לפי cardinality: '1' או 'N' = חובה, '0..1' = אופציונלי
+    // 🔧 NOT NULL according to cardinality: '1' or 'N' = required, '0..1' = optional
     const isRequired = attr.cardinality === '1' || attr.cardinality === 'N';
     const nullable = isRequired ? ' NOT NULL' : '';
     return `    ${attr.name} ${convertDataType(attr.type)}${nullable}`;
   });
 
-  // איחוד כל העמודות
+  // Combine columns
   allColumns.push(...columnDefinitions, ...fkColumnDefinitions);
 
-  // 🔧 הוספת PRIMARY KEY constraint
+  // 🔧 Add PRIMARY KEY constraint
   if (naturalPK) {
-    // ✅ משתמשים ב-natural PK (FK עם cardinality='1')
+    // ✅ Use natural PK (FK with cardinality='1')
     const pkColumns = naturalPK.map(fk => fk.name).join(', ');
     allColumns.push(`    PRIMARY KEY (${pkColumns})  -- Natural key from cardinality='1' FK`);
   } else if (!needsSurrogateKey && primaryKeys.length > 0) {
-    // ✅ משתמשים ב-PK מוגדר מראש
+    // ✅ Use predefined PK
     const pkColumns = primaryKeys.map(pk => pk.name).join(', ');
     allColumns.push(`    PRIMARY KEY (${pkColumns})`);
   }
-  // אחרת: surrogate key כבר נוסף למעלה
+  // Otherwise: surrogate key already added above
 
   sql += allColumns.join(',\n');
   sql += '\n);\n';
@@ -123,10 +125,10 @@ const generateCreateTable_FIXED = (table) => {
 };
 
 /**
- * דוגמאות לתוצאות
+ * Example outputs
  */
 
-// דוגמה 1: טבלה עם FK cardinality='1' (כמו טבלה d שלנו)
+// Example 1: table with FK cardinality='1' (like our table d)
 const exampleTable1 = {
   data: {
     name: 'd',
@@ -141,9 +143,9 @@ const exampleTable1 = {
   }
 };
 
-console.log("דוגמה 1: טבלת קשר עם cardinality='1' (natural PK)");
+console.log("Example 1: Relationship table with cardinality='1' (natural PK)");
 console.log("========================================");
-// תוצאה צפויה:
+// Expected result:
 // CREATE TABLE d (
 //     dvsvs VARCHAR(255),
 //     a_aa VARCHAR(255),              -- ✅ NULLABLE (cardinality='0..1')
@@ -153,7 +155,7 @@ console.log("========================================");
 //     PRIMARY KEY (b_ba, b_bb)        -- ✅ Natural key!
 // );
 
-// דוגמה 2: junction table (M:N)
+// Example 2: junction table (M:N)
 const exampleTable2 = {
   data: {
     name: 'Enrollment',
@@ -166,17 +168,17 @@ const exampleTable2 = {
   }
 };
 
-console.log("\nדוגמה 2: Junction table (M:N)");
+console.log("\nExample 2: Junction table (M:N)");
 console.log("========================================");
-// תוצאה צפויה:
+// Expected:
 // CREATE TABLE Enrollment (
 //     enrollment_date DATE,
 //     student_id INT NOT NULL,
 //     course_id INT NOT NULL,
-//     PRIMARY KEY (student_id, course_id)  -- ✅ Composite PK מ-isPrimaryKey
+//     PRIMARY KEY (student_id, course_id)  -- ✅ Composite PK from isPrimaryKey
 // );
 
-// דוגמה 3: טבלה עם FKs אך ללא cardinality='1' (צריך surrogate key)
+// Example 3: table with FKs but no cardinality='1' (needs surrogate key)
 const exampleTable3 = {
   data: {
     name: 'OrderItem',
@@ -189,9 +191,9 @@ const exampleTable3 = {
   }
 };
 
-console.log("\nדוגמה 3: טבלה עם FKs cardinality='N' (surrogate key)");
+console.log("\nExample 3: Table with FKs cardinality='N' (surrogate key)");
 console.log("========================================");
-// תוצאה צפויה:
+// Expected:
 // CREATE TABLE OrderItem (
 //     id SERIAL PRIMARY KEY,          -- ✅ Surrogate key
 //     quantity INT,
@@ -200,22 +202,22 @@ console.log("========================================");
 // );
 
 /**
- * סיכום הלוגיקה המתוקנת:
+ * Summary of corrected logic:
  *
  * 1. Junction table (isJunctionTable=true):
- *    → משתמש ב-isPrimaryKey מוגדר מראש (composite PK)
+ *    ← Uses predefined isPrimaryKey (composite PK)
  *
- * 2. טבלת קשר עם FK cardinality='1':
- *    → משתמש ב-FK הזה כ-natural PK
- *    → דוגמה: טבלה d במקרה שלנו
+ * 2. Relationship table with FK cardinality='1':
+ *    ← Uses that FK as natural PK
+ *    ← Example: table d in our case
  *
- * 3. טבלה רגילה עם FKs אך ללא cardinality='1':
- *    → מוסיף surrogate key (id SERIAL)
- *    → דוגמה: OrderItem
+ * 3. Regular table with FKs but no cardinality='1':
+ *    ← Adds a surrogate key (id SERIAL)
+ *    ← Example: OrderItem
  *
- * 4. ישות עצמאית ללא FKs:
- *    → משתמש ב-PK מוגדר מראש
- *    → דוגמה: טבלאות a, b, c
+ * 4. Independent entity without FKs:
+ *    ← Uses predefined primary key
+ *    ← Example: tables a, b, c
  */
 
 module.exports = {
