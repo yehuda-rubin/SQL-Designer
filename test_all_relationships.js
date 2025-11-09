@@ -1,6 +1,6 @@
 /**
  * Comprehensive Relationship Testing
- * בודק את כל סוגי הקשרים: 1:1, 1:N, 0..1:N, M:N
+ * Tests all relationship types: 1:1, 1:N, 0..1:N, and M:N
  */
 
 const testNodes = [
