@@ -1,11 +1,11 @@
 /**
  * Test Direct SQL Generation
- * בודק את ה-SQL שנוצר ישירות מהפונקציות
+ * Validates SQL generated directly from the functions
  */
 
 import { generateSQL } from './Frontend/src/utils/sqlGenerator.js';
 
-// נתוני ERD לדוגמה - A, B, C, D עם קרדינליות שונות
+// Example ERD data - A, B, C, D with different cardinalities
 const testNodes = [
   // Entity A
   {
@@ -63,8 +63,8 @@ const testNodes = [
   },
 
   // Relationship: A --(1)-- <R_A_D> --(0..1)-- D
-  // משמעות: כל A יכול להיות מקושר ל-0 או 1 D
-  // לכן D מקבל FK ל-A עם cardinality 0..1
+  // Meaning: Each A can be linked to 0 or 1 D
+  // Therefore D receives FK to A with cardinality 0..1
   {
     id: 'rel_a_d',
     type: 'relationship',
@@ -80,8 +80,8 @@ const testNodes = [
   },
 
   // Relationship: B --(1)-- <R_B_D> --(1)-- D
-  // משמעות: כל B מקושר לדיוק 1 D, וכל D מקושר לדיוק 1 B
-  // לכן D מקבל FK ל-B עם cardinality 1
+  // Meaning: Each B is linked to exactly 1 D, and each D to exactly 1 B
+  // Therefore D receives FK to B with cardinality 1
   {
     id: 'rel_b_d',
     type: 'relationship',
@@ -97,8 +97,8 @@ const testNodes = [
   },
 
   // Relationship: C --(1)-- <R_C_D> --(N)-- D
-  // משמעות: כל C יכול להיות מקושר להרבה D
-  // לכן D מקבל FK ל-C עם cardinality N
+  // Meaning: Each C can be linked to many D
+  // Therefore D receives FK to C with cardinality N
   {
     id: 'rel_c_d',
     type: 'relationship',
@@ -115,16 +115,16 @@ const testNodes = [
 ];
 
 console.log('='.repeat(80));
-console.log('בדיקת יצירת SQL');
+console.log('SQL Generation Test');
 console.log('='.repeat(80));
-console.log('\nתצורת ERD:');
-console.log('- A→D: 0..1 (לכל A יש לכל היותר 1 D)');
-console.log('- B→D: 1 (לכל B יש בדיוק 1 D)');
-console.log('- C→D: N (לכל C יש הרבה D)');
-console.log('\nמה אמור להיווצר:');
-console.log('- a_aa: nullable (בלי NOT NULL), עם UNIQUE');
-console.log('- b_ba, b_bb: NOT NULL, עם UNIQUE (מורכב)');
-console.log('- c_cc: NOT NULL, בלי UNIQUE');
+console.log('\nERD Structure:'); 
+console.log('- A←D: 0..1 (each A linked to at most one D)'); 
+console.log('- B←D: 1 (each B linked to exactly one D)'); 
+console.log('- C←D: N (each C linked to many D)'); 
+console.log('\nExpected SQL behavior:'); 
+console.log('- a_aa: nullable (no NOT NULL), with UNIQUE');
+console.log('- b_ba, b_bb: NOT NULL, with composite UNIQUE');
+console.log('- c_cc: NOT NULL, without UNIQUE');
 console.log('\n' + '='.repeat(80) + '\n');
 
 try {
@@ -132,7 +132,7 @@ try {
   console.log(sql);
 
   console.log('\n' + '='.repeat(80));
-  console.log('בדיקת תקינות:');
+  console.log('Validation:');
   console.log('='.repeat(80));
 
   let passed = 0;
@@ -140,119 +140,118 @@ try {
 
   // Test 1: Surrogate key
   if (sql.includes('id SERIAL PRIMARY KEY')) {
-    console.log('✅ יש מפתח סרוגט (id SERIAL PRIMARY KEY) בטבלה d');
+    console.log('✅ Surrogate key (id SERIAL PRIMARY KEY) exists in table d');
     passed++;
   } else {
-    console.log('❌ חסר מפתח סרוגט בטבלה d');
+    console.log('❌ Surrogate key missing in table d');
     failed++;
   }
 
   // Test 2: a_aa nullable
   if (sql.match(/a_aa VARCHAR\(255\)(?![^,\n]*NOT NULL)/)) {
-    console.log('✅ a_aa הוא nullable (בלי NOT NULL)');
+    console.log('✅ a_aa is nullable (no NOT NULL)');
     passed++;
   } else {
-    console.log('❌ a_aa צריך להיות nullable');
+    console.log('❌ a_aa should be nullable');
     failed++;
   }
 
   // Test 3: b_ba, b_bb NOT NULL
   if (sql.includes('b_ba VARCHAR(255) NOT NULL') && sql.includes('b_bb VARCHAR(255) NOT NULL')) {
-    console.log('✅ b_ba ו-b_bb הם NOT NULL');
+    console.log('✅ b_ba and b_bb are NOT NULL');
     passed++;
   } else {
-    console.log('❌ b_ba ו-b_bb צריכים להיות NOT NULL');
+    console.log('❌ b_ba and b_bb must be NOT NULL');
     failed++;
   }
 
   // Test 4: c_cc NOT NULL
   if (sql.includes('c_cc VARCHAR(255) NOT NULL')) {
-    console.log('✅ c_cc הוא NOT NULL');
+    console.log('✅ c_cc is NOT NULL');
     passed++;
   } else {
-    console.log('❌ c_cc צריך להיות NOT NULL');
+    console.log('❌ c_cc must be NOT NULL');
     failed++;
   }
 
   // Test 5: UNIQUE on a_aa
   if (sql.includes('UNIQUE (a_aa)')) {
-    console.log('✅ יש UNIQUE constraint על a_aa');
+    console.log('✅ UNIQUE constraint exists on a_aa');
     passed++;
   } else {
-    console.log('❌ חסר UNIQUE constraint על a_aa');
+    console.log('❌ UNIQUE constraint missing on a_aa');
     failed++;
   }
 
-  // Test 6: UNIQUE on b_ba, b_bb
+  // Test 6: UNIQUE on (b_ba, b_bb)
   if (sql.match(/UNIQUE \(b_ba, b_bb\)/)) {
-    console.log('✅ יש UNIQUE constraint על (b_ba, b_bb)');
+    console.log('✅ UNIQUE constraint exists on (b_ba, b_bb)');
     passed++;
   } else {
-    console.log('❌ חסר UNIQUE constraint על (b_ba, b_bb)');
+    console.log('❌ UNIQUE constraint missing on (b_ba, b_bb)');
     failed++;
   }
 
-  // Test 7: No UNIQUE on c_cc (should not have its own UNIQUE)
+  // Test 7: No UNIQUE on c_cc
   const uniqueConstraints = sql.match(/UNIQUE \([^)]*c_cc[^)]*\)/g) || [];
-  const onlyCccUnique = uniqueConstraints.some(constraint =>
-    constraint === 'UNIQUE (c_cc)' || constraint === 'UNIQUE(c_cc)'
-  );
+  const onlyCccUnique =
+    uniqueConstraints.some(c => c === 'UNIQUE (c_cc)' || c === 'UNIQUE(c_cc)');
   if (!onlyCccUnique) {
-    console.log('✅ אין UNIQUE constraint על c_cc (נכון ל-N cardinality)');
+    console.log('✅ No UNIQUE constraint on c_cc (correct for N cardinality)');
     passed++;
   } else {
-    console.log('❌ לא צריך להיות UNIQUE constraint על c_cc בלבד');
+    console.log('❌ c_cc should not have a standalone UNIQUE constraint');
     failed++;
   }
 
-  // Test 8: ON DELETE SET NULL for a_aa
+  // Test 8: ON DELETE SET NULL
   if (sql.includes('ON DELETE SET NULL')) {
-    console.log('✅ יש ON DELETE SET NULL (לקרדינליות 0..1)');
+    console.log('✅ ON DELETE SET NULL exists (for 0..1 cardinality)');
     passed++;
   } else {
-    console.log('❌ חסר ON DELETE SET NULL');
+    console.log('❌ ON DELETE SET NULL missing');
     failed++;
   }
 
   // Test 9: ON DELETE CASCADE
   if (sql.includes('ON DELETE CASCADE')) {
-    console.log('✅ יש ON DELETE CASCADE (לקרדינליות 1)');
+    console.log('✅ ON DELETE CASCADE exists (for 1 cardinality)');
     passed++;
   } else {
-    console.log('❌ חסר ON DELETE CASCADE');
+    console.log('❌ ON DELETE CASCADE missing');
     failed++;
   }
 
   // Test 10: ON DELETE RESTRICT
   if (sql.includes('ON DELETE RESTRICT')) {
-    console.log('✅ יש ON DELETE RESTRICT (לקרדינליות N)');
+    console.log('✅ ON DELETE RESTRICT exists (for N cardinality)');
     passed++;
   } else {
-    console.log('❌ חסר ON DELETE RESTRICT');
+    console.log('❌ ON DELETE RESTRICT missing');
     failed++;
   }
 
   // Test 11: Indexes
   const indexCount = (sql.match(/CREATE INDEX/g) || []).length;
   if (indexCount >= 3) {
-    console.log(`✅ נוצרו אינדקסים (${indexCount} נמצאו)`);
+    console.log(`✅ Indexes created (${indexCount} found)`);
     passed++;
   } else {
-    console.log(`❌ חסרים אינדקסים (נמצאו ${indexCount}, צריך לפחות 3)`);
+    console.log(`❌ Missing indexes (${indexCount} found, expected at least 3)`);
     failed++;
   }
 
   console.log('\n' + '='.repeat(80));
-  console.log(`סיכום: ${passed} ✅  |  ${failed} ❌`);
+  console.log(`Summary: ${passed} ✅  |  ${failed} ❌`);
   console.log('='.repeat(80));
 
   if (failed === 0) {
-    console.log('\n🎉 כל הבדיקות עברו בהצלחה! הקוד עובד נכון.');
+    console.log('\n🎉 All tests passed! SQL generation is correct.');
   } else {
-    console.log('\n⚠️  יש בעיות שצריך לתקן.');
+    console.log('\n⚠️  Some checks failed.');
   }
 
 } catch (error) {
-  console.error('שגיאה בהרצת הבדיקה:', error.message);
+  console.error('Error running the test:', error.message);
   console.error(error.stack);
 }
