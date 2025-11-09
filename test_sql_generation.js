@@ -1,5 +1,6 @@
 /**
- * Test SQL Generation - בודק אם הקוד יוצר SQL נכון
+ * Test SQL Generation
+ * Checks if the code generates correct SQL
  */
 
 // Simulate ERD nodes
