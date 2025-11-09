@@ -11,7 +11,7 @@ const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving
   const { nodes } = useProjectStore();
 
   /**
-   * טיפול בייצוא DSD
+   * Handle DSD export
    */
   const handleExportDSD = () => {
     if (!nodes || nodes.length === 0) {
@@ -35,7 +35,7 @@ const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving
   };
 
   /**
-   * טיפול בייצוא SQL
+   * Handle SQL export
    */
   const handleExportSQL = () => {
     if (!nodes || nodes.length === 0) {
@@ -96,7 +96,7 @@ const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving
 
           <div className="border-r border-gray-300 h-8"></div>
 
-          {/* ✅ כפתור הפק DSD - מחובר! */}
+          {/* ✅ Generate DSD button - connected! */}
           <Button
             onClick={handleExportDSD}
             variant="ghost"
@@ -107,7 +107,7 @@ const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving
             הפק DSD
           </Button>
 
-          {/* ✅ כפתור הפק SQL - מחובר! */}
+          {/* ✅ Generate SQL button - connected! */}
           <Button
             onClick={handleExportSQL}
             variant="ghost"
