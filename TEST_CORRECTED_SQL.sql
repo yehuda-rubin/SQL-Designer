@@ -1,12 +1,12 @@
 -- ========================================
--- בדיקת הקוד המתוקן
+-- Validating the corrected code
 -- ========================================
--- קובץ זה מאמת שהקוד המתוקן עובד נכון
+-- This file verifies that the corrected SQL logic works as expected
 -- ========================================
 
--- הפעלת הקוד המתוקן (העתקה מ-CORRECTED_SQL.sql)
+-- Running the corrected code (copied from CORRECTED_SQL.sql)
 
-\echo '=== יצירת טבלאות ==='
+\echo '=== Creating Tables ==='
 
 CREATE TABLE a (
     aa VARCHAR(255),
@@ -35,7 +35,7 @@ CREATE TABLE d (
     PRIMARY KEY (b_ba, b_bb)
 );
 
-\echo '=== הוספת Foreign Keys ==='
+\echo '=== Adding Foreign Keys ==='
 
 ALTER TABLE d
     ADD CONSTRAINT fk_d_a
@@ -55,20 +55,20 @@ ALTER TABLE d
     REFERENCES c(cc)
     ON DELETE CASCADE;
 
-\echo '=== הוספת UNIQUE Constraints ==='
+\echo '=== Adding UNIQUE Constraints ==='
 
 ALTER TABLE d
     ADD CONSTRAINT uq_d_a
     UNIQUE (a_aa);
 
-\echo '=== הוספת אינדקסים ==='
+\echo '=== Adding Indexes ==='
 
 CREATE INDEX idx_d_a ON d(a_aa);
 CREATE INDEX idx_d_c ON d(c_cc);
 
-\echo '=== נתוני בדיקה ==='
+\echo '=== Test Data ==='
 
--- הכנסת נתוני בסיס
+-- Insert base data
 INSERT INTO a VALUES ('a1', 'value_a1');
 INSERT INTO a VALUES ('a2', 'value_a2');
 
@@ -80,70 +80,70 @@ INSERT INTO c VALUES ('c1', 'value_c1');
 INSERT INTO c VALUES ('c2', 'value_c2');
 
 \echo ''
-\echo '=== בדיקה 1: a_aa = NULL (0..1 = אופציונלי) ==='
+\echo '=== Test 1: a_aa = NULL (0..1 = Optional) ==='
 
--- ✅ צפוי להצליח: a_aa = NULL
+-- ✅ Expected: success (a_aa = NULL)
 INSERT INTO d (dvsvs, a_aa, b_ba, b_bb, c_cc)
 VALUES ('data1', NULL, 'b1', 'bb1', 'c1');
-\echo '✅ הצלחה: a_aa = NULL'
+\echo '✅ Success: a_aa = NULL'
 
--- ✅ צפוי להצליח: a_aa = NULL שוב (UNIQUE מאפשר רבים NULL)
+-- ✅ Expected: success again (NULL allowed multiple times)
 INSERT INTO d (dvsvs, a_aa, b_ba, b_bb, c_cc)
 VALUES ('data2', NULL, 'b2', 'bb2', 'c2');
-\echo '✅ הצלחה: a_aa = NULL שוב'
+\echo '✅ Success: a_aa = NULL again'
 
 \echo ''
-\echo '=== בדיקה 2: a_aa = a1 (0..1 = At most once) ==='
+\echo '=== Test 2: a_aa = a1 (0..1 = At most once) ==='
 
--- ✅ צפוי להצליח: a_aa = 'a1' פעם ראשונה
+-- ✅ Expected: first use of a1 succeeds
 INSERT INTO d (dvsvs, a_aa, b_ba, b_bb, c_cc)
 VALUES ('data3', 'a1', 'b3', 'bb3', 'c1');
-\echo '✅ הצלחה: a_aa = a1 (פעם ראשונה)'
+\echo '✅ Success: a_aa = a1 (first time)'
 
--- ❌ צפוי להיכשל: a_aa = 'a1' פעם שנייה (UNIQUE violation)
+-- ❌ Expected failure: using a1 again (UNIQUE violation)
 \echo ''
-\echo '=== בדיקה 3: ניסיון לשכפל a_aa (צריך להיכשל) ==='
+\echo '=== Test 3: Attempt to duplicate a_aa (should fail) ==='
 INSERT INTO d (dvsvs, a_aa, b_ba, b_bb, c_cc)
 VALUES ('data4', 'a1', 'b4', 'bb4', 'c2');
--- אמור לקבל: ERROR: duplicate key value violates unique constraint "uq_d_a"
+-- Expected: ERROR: duplicate key value violates unique constraint "uq_d_a"
 
 \echo ''
-\echo '=== בדיקה 4: c_cc = c1 שוב (N = Many) ==='
+\echo '=== Test 4: c_cc = c1 again (N = Many) ==='
 
--- נחזיר את השגיאה הקודמת ונמשיך
+-- Continue after the previous error
 \set ON_ERROR_ROLLBACK on
 
--- הכנסת b נוסף לבדיקה
+-- Insert additional b for test
 INSERT INTO b VALUES ('b5', 'bb5');
 
--- ✅ צפוי להצליח: c_cc = 'c1' שוב (N = מרובה)
+-- ✅ Expected: success — c_cc may repeat (N cardinality)
 INSERT INTO d (dvsvs, a_aa, b_ba, b_bb, c_cc)
 VALUES ('data5', 'a2', 'b5', 'bb5', 'c1');
-\echo '✅ הצלחה: c_cc = c1 שוב (N = Many)'
+\echo '✅ Success: c_cc = c1 again (N = Many)'
 
 \echo ''
-\echo '=== בדיקה 5: מחיקת a עם CASCADE ==='
+\echo '=== Test 5: Deleting a with CASCADE ==='
 
--- מחיקת a1 צריכה למחוק את d שמפנה אליו
+-- Deleting a1 should delete related rows in d
 DELETE FROM a WHERE aa = 'a1';
-\echo '✅ הצלחה: מחיקת a1 מחקה את d עם a_aa = a1 (CASCADE)'
+\echo '✅ Success: deleting a1 removed rows in d (CASCADE)'
 
--- בדיקה שהמחיקה עבדה
-SELECT COUNT(*) AS "d records with a_aa=a1 (should be 0)" FROM d WHERE a_aa = 'a1';
+-- Validate deletion
+SELECT COUNT(*) AS "d records with a_aa = a1 (should be 0)" FROM d WHERE a_aa = 'a1';
 
 \echo ''
-\echo '=== סיכום ==='
-\echo 'מספר רשומות ב-d:'
+\echo '=== Summary ==='
+\echo 'Number of records in d:'
 SELECT COUNT(*) AS total_d_records FROM d;
 
 \echo ''
-\echo 'תוכן טבלה d:'
+\echo 'Contents of table d:'
 SELECT * FROM d ORDER BY dvsvs;
 
 \echo ''
-\echo '=== כל הבדיקות עברו בהצלחה! ==='
+\echo '=== All tests completed successfully! ==='
 
--- ניקוי (אופציונלי)
+-- Cleanup (optional)
 -- DROP TABLE d;
 -- DROP TABLE a;
 -- DROP TABLE b;
