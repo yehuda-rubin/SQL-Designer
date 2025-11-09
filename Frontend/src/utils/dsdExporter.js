@@ -1,14 +1,14 @@
 /**
  * DSD Exporter - Professional Graphical Format
- * מייצא את ה-DSD בפורמט גרפי מקצועי עם קווי קשר
+ * Exports the DSD in a professional graphical format with connection lines
  */
 
 import { convertERDtoDSD } from './erdToDsdConverter';
 
 /**
- * מחשב מיקומים אוטומטיים לטבלאות (Grid Layout)
- * @param {Array} tables - מערך הטבלאות
- * @returns {Array} - מערך טבלאות עם מיקומים מעודכנים
+ * Calculates automatic positions for tables (Grid Layout)
+ * @param {Array} tables - Array of tables
+ * @returns {Array} - Array of tables with updated positions
  */
 const calculateTablePositions = (tables) => {
   const SPACING_X = 400;
@@ -30,14 +30,14 @@ const calculateTablePositions = (tables) => {
 };
 
 /**
- * יוצר מידע מפורט על הטבלה לתצוגה גרפית
- * @param {Object} table - אובייקט הטבלה
- * @returns {Object} - מידע מורחב
+ * Creates detailed information about the table for graphical display
+ * @param {Object} table - The table object
+ * @returns {Object} - Enriched information
  */
 const enrichTableData = (table) => {
   const { attributes = [] } = table.data;
 
-  // קיבוץ FKs לפי foreignKeyGroup
+  // Group FKs by foreignKeyGroup
   const foreignKeyGroups = new Map();
   const processedFKs = new Set();
 
@@ -92,9 +92,9 @@ const enrichTableData = (table) => {
 };
 
 /**
- * מייצא DSD לפורמט JSON עבור תצוגה גרפית
- * @param {Array} nodes - מערך של nodes (entities + relationships)
- * @returns {Object} - אובייקט DSD מלא
+ * Exports DSD to JSON format for graphical display
+ * @param {Array} nodes - Array of nodes (entities + relationships)
+ * @returns {Object} - Complete DSD object
  */
 export const exportDSDGraphical = (nodes) => {
   const { tables, relationships } = convertERDtoDSD(nodes);
@@ -120,9 +120,9 @@ export const exportDSDGraphical = (nodes) => {
 };
 
 /**
- * מוריד את ה-DSD כקובץ JSON
- * @param {Array} nodes - מערך של nodes
- * @param {String} filename - שם הקובץ
+ * Downloads the DSD as a JSON file
+ * @param {Array} nodes - Array of nodes
+ * @param {String} filename - The file name
  */
 export const downloadDSDJSON = (nodes, filename = 'database_schema_dsd.json') => {
   const dsd = exportDSDGraphical(nodes);
@@ -140,41 +140,41 @@ export const downloadDSDJSON = (nodes, filename = 'database_schema_dsd.json') =>
 };
 
 /**
- * קובע את סוג הקשר וצבעו לפי cardinality אמיתי
+ * Determines the relationship type and color according to true cardinality
  * @param {Object} fk - Foreign Key
- * @param {Array} relationships - מערך relationships עם cardinality
- * @param {Object} sourceTable - טבלת המקור
- * @param {Object} targetTable - טבלת היעד
- * @returns {Object} - מידע על הקשר
+ * @param {Array} relationships - Array of relationships with cardinality
+ * @param {Object} sourceTable - Source table
+ * @param {Object} targetTable - Target table
+ * @returns {Object} - Information about the relationship
  */
 const determineRelationshipType = (fk, relationships, sourceTable, targetTable) => {
-  // ברירת מחדל
+  // Default
   let sourceCardinality = 'N';
   let isOptional = false;
   
-  // 🔍 שלב 1: נסה לקרוא cardinality מה-column attributes (המקור הכי מדויק)
+  // 🔍 Step 1: Try to read cardinality from column attributes (the most accurate source)
   if (fk.columns && fk.columns.length > 0) {
     const firstColName = Array.isArray(fk.columns) ? fk.columns[0] : fk.columns;
     const col = sourceTable.data.columns.find(c => c.name === firstColName);
     
     if (col) {
-      // קרא cardinality מה-column
+      // Read cardinality from the column
       if (col.cardinality) {
         sourceCardinality = col.cardinality;
       }
-      // בדוק אם nullable
+      // Check if nullable
       if (col.isNullable === true) {
         isOptional = true;
       }
     }
   }
   
-  // 🔍 שלב 2: אם לא מצאנו, נסה לקרוא מ-relationships
+  // 🔍 Step 2: If not found, try to read from relationships
   if (sourceCardinality === 'N' && relationships && relationships.length > 0) {
     for (const rel of relationships) {
       if (!rel.data) continue;
       
-      // בדיקה אם זה ה-relationship הנכון
+      // Check if this is the correct relationship
       if (rel.source === sourceTable.id && rel.target === targetTable.id) {
         if (rel.data.sourceCardinality) {
           sourceCardinality = rel.data.sourceCardinality;
@@ -184,46 +184,46 @@ const determineRelationshipType = (fk, relationships, sourceTable, targetTable) 
     }
   }
   
-  // 📊 קביעת סוג הקשר לפי cardinality
+  // 📊 Determine relationship type by cardinality
   const isJunction = sourceTable.data.isJunctionTable;
   
-  // 🔴 N:M - רק אם זה Junction ויש 2+ FKs עם cardinality='N'
+  // 🔴 N:M - Only if it's a Junction and has 2+ FKs with cardinality='N'
   if (isJunction && sourceCardinality === 'N') {
     return {
       type: 'N:M',
-      color: '#e74c3c', // אדום
+      color: '#e74c3c', // Red
       label: 'N:M',
       strokeWidth: '2.5',
       cardinality: sourceCardinality
     };
   }
   
-  // 🟢 0..1 - אופציונלי (קו מקווקו)
+  // 🟢 0..1 - Optional (dashed line)
   if (sourceCardinality === '0..1' || isOptional) {
     return {
       type: '0..1:N',
-      color: '#27ae60', // ירוק
+      color: '#27ae60', // Green
       label: '0..1:N',
       strokeWidth: '2',
       cardinality: sourceCardinality
     };
   }
   
-  // 🔵 1 - חובה (קו רציף)
+  // 🔵 1 - Mandatory (solid line)
   if (sourceCardinality === '1') {
     return {
       type: '1:N',
-      color: '#3498db', // כחול
+      color: '#3498db', // Blue
       label: '1:N',
       strokeWidth: '2',
       cardinality: sourceCardinality
     };
   }
   
-  // 🔵 N - Many (ברירת מחדל - כחול)
+  // 🔵 N - Many (Default - Blue)
   return {
     type: '1:N',
-    color: '#3498db', // כחול
+    color: '#3498db', // Blue
     label: '1:N',
     strokeWidth: '2',
     cardinality: sourceCardinality
@@ -231,9 +231,9 @@ const determineRelationshipType = (fk, relationships, sourceTable, targetTable) 
 };
 
 /**
- * מייצר קווי קשר SVG בין טבלאות - גרסה משופרת
- * @param {Array} tables - מערך הטבלאות
- * @param {Array} relationships - מערך ה-relationships עם cardinality
+ * Generates SVG connection lines between tables - improved version
+ * @param {Array} tables - Array of tables
+ * @param {Array} relationships - Array of relationships with cardinality
  * @returns {String} - SVG paths
  */
 const generateConnectionLines = (tables, relationships = []) => {
@@ -243,13 +243,13 @@ const generateConnectionLines = (tables, relationships = []) => {
   const ROW_HEIGHT = 35;
   const ARROW_OFFSET = 10;
   
-  // מיפוי טבלאות לפי שם
+  // Map tables by name
   const tableMap = new Map();
   tables.forEach(table => {
     tableMap.set(table.data.name, table);
   });
   
-  // יצירת קווים עבור כל FK
+  // Create lines for each FK
   tables.forEach(sourceTable => {
     if (!sourceTable.data.foreignKeys) return;
     
@@ -257,37 +257,37 @@ const generateConnectionLines = (tables, relationships = []) => {
       const targetTable = tableMap.get(fk.references);
       if (!targetTable) return;
       
-      // קביעת סוג הקשר וצבעו - עכשיו עם relationships!
+      // Determine relationship type and color - now with relationships!
       const relationship = determineRelationshipType(fk, relationships, sourceTable, targetTable);
       
-      // חישוב נקודות התחלה וסיום
+      // Calculate start and end points
       const sourceX = sourceTable.position.x + TABLE_WIDTH;
       const sourceY = sourceTable.position.y + TABLE_HEADER_HEIGHT + (fkIndex + 1) * ROW_HEIGHT + ROW_HEIGHT/2;
       
       const targetX = targetTable.position.x;
       const targetY = targetTable.position.y + TABLE_HEADER_HEIGHT / 2;
       
-      // יצירת path אורתוגונלי (קווים ישרים)
+      // Create orthogonal path (straight lines)
       const midX = (sourceX + targetX) / 2;
       
-      // בחירת נתיב לפי מיקום יחסי
+      // Select path based on relative position
       let path;
       if (sourceTable.position.y < targetTable.position.y - 100) {
-        // מקור למעלה מהיעד - קו למטה
+        // Source above target - line down
         path = `M ${sourceX} ${sourceY} L ${midX} ${sourceY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
       } else if (sourceTable.position.y > targetTable.position.y + 100) {
-        // מקור למטה מהיעד - קו למעלה
+        // Source below target - line up
         path = `M ${sourceX} ${sourceY} L ${midX} ${sourceY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
       } else {
-        // באותו גובה בערך - קו ישר
+        // Approximately same height - straight line
         path = `M ${sourceX} ${sourceY} L ${midX} ${sourceY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
       }
       
-      // חישוב מיקום התווית
+      // Calculate label position
       const labelX = midX;
       const labelY = (sourceY + targetY) / 2 - 10;
       
-      // סגנון קו
+      // Line style
       const strokeDasharray = relationship.type === '0..1:N' ? '5,5' : 'none';
       const compositeMarker = fk.isComposite ? ' (Composite)' : '';
       
@@ -304,7 +304,7 @@ const generateConnectionLines = (tables, relationships = []) => {
             opacity="0.85"
           />
           
-          <!-- תווית סוג הקשר -->
+          <!-- Relationship type label -->
           <text 
             x="${labelX}" 
             y="${labelY}" 
@@ -331,15 +331,15 @@ const generateConnectionLines = (tables, relationships = []) => {
 };
 
 /**
- * מייצר HTML מעוצב לתצוגת DSD מקצועית
- * @param {Array} nodes - מערך של nodes
+ * Generates styled HTML for a professional DSD display
+ * @param {Array} nodes - Array of nodes
  * @returns {String} - HTML string
  */
 export const generateDSDHTML = (nodes) => {
   const dsd = exportDSDGraphical(nodes);
   const { tables, relationships } = dsd.schema;
   
-  // חישוב גודל ה-canvas
+  // Calculate canvas size
   const maxX = Math.max(...tables.map(t => t.position.x)) + 400;
   const maxY = Math.max(...tables.map(t => t.position.y)) + 350;
   
@@ -553,15 +553,15 @@ export const generateDSDHTML = (nodes) => {
         <div class="header">
             <h1>📊 Database Schema Diagram (DSD)</h1>
             <div class="metadata">
-                ${dsd.database} | נוצר: ${new Date(dsd.generatedAt).toLocaleString('he-IL')} | 
-                ${dsd.metadata.totalTables} טבלאות | ${dsd.metadata.totalRelationships} קשרים
+                ${dsd.database} | Created: ${new Date(dsd.generatedAt).toLocaleString('he-IL')} | 
+                ${dsd.metadata.totalTables} Tables | ${dsd.metadata.totalRelationships} Relationships
             </div>
         </div>
         
         <div class="diagram-area">
             <svg>
                 <defs>
-                    <!-- Arrowheads בצבעים שונים -->
+                    <!-- Arrowheads in different colors -->
                     <marker id="arrowhead-1N" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
                         <polygon points="0 0, 10 3, 0 6" fill="#3498db" />
                     </marker>
@@ -576,7 +576,7 @@ export const generateDSDHTML = (nodes) => {
             </svg>
 `;
 
-  // יצירת טבלאות
+  // Create tables
   tables.forEach(table => {
     const isJunction = table.data.isJunctionTable;
     
@@ -588,7 +588,7 @@ export const generateDSDHTML = (nodes) => {
                 </div>
 `;
 
-    // עמודות
+    // Columns
     table.data.columns.forEach(col => {
       const pkIcon = col.isPrimaryKey ? '<span class="key-icon pk-icon">🔑</span>' : '<span class="key-icon"></span>';
       const fkIcon = col.isForeignKey ? '<span class="key-icon fk-icon">➜</span>' : '';
@@ -660,9 +660,9 @@ export const generateDSDHTML = (nodes) => {
 };
 
 /**
- * מוריד את ה-DSD כקובץ HTML
- * @param {Array} nodes - מערך של nodes
- * @param {String} filename - שם הקובץ
+ * Downloads the DSD as an HTML file
+ * @param {Array} nodes - Array of nodes
+ * @param {String} filename - The file name
  */
 export const downloadDSDHTML = (nodes, filename = 'database_schema_dsd.html') => {
   const html = generateDSDHTML(nodes);
