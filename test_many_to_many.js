@@ -1,6 +1,6 @@
 /**
  * Test Many-to-Many Relationships
- * בודק יחסים M:N ויצירת junction tables
+ * Tests M:N relationships and creation of junction tables
  */
 
 // Simulate ERD nodes with M:N relationship
