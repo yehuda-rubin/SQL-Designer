@@ -2,11 +2,11 @@
 -- SQL Database Schema (CORRECTED)
 -- Database: PostgreSQL
 -- ========================================
--- תיקון: יישום נכון של קרדינליות מ-ERD
+-- Fix: proper implementation of cardinality from ERD
 -- ========================================
 
 -- ========================================
--- שלב 1: יצירת טבלאות
+-- Step 1: Creating Tables
 -- ========================================
 
 CREATE TABLE a (
@@ -27,45 +27,45 @@ CREATE TABLE b (
     PRIMARY KEY (ba, bb)
 );
 
--- ✅ תיקון קריטי: טבלה d כטבלת קשר עם PK נכון
+-- ✅ Critical fix: table d as a relationship table with the correct PK
 CREATE TABLE d (
-    -- תכונת הקשר
+    -- Relationship attribute
     dvsvs VARCHAR(255),
 
-    -- קשר a (0..1 "At most once") - אופציונלי וייחודי
-    a_aa VARCHAR(255),  -- ✅ NULLABLE (לא NOT NULL!)
+    -- Relationship a (0..1 "At most once") - optional and unique
+    a_aa VARCHAR(255),  -- ✅ NULLABLE (not NOT NULL!)
 
-    -- קשר b (1 "Mandatory once") - חובה וייחודי
+    -- Relationship b (1 "Mandatory once") - mandatory and unique
     b_ba VARCHAR(255) NOT NULL,
     b_bb VARCHAR(255) NOT NULL,
 
-    -- קשר c (N "Many") - חובה, מרובה
+    -- Relationship c (N "Many") - mandatory, many
     c_cc VARCHAR(255) NOT NULL,
 
-    -- ✅ PK נכון: רק b (היחיד ש-Mandatory + Once)
+    -- ✅ Correct PK: only b (the only one that is Mandatory + Once)
     PRIMARY KEY (b_ba, b_bb)
 );
 
 
 -- ========================================
--- שלב 2: הוספת Foreign Keys
+-- Step 2: Adding Foreign Keys
 -- ========================================
 
--- קשר a (0..1) - CASCADE כי d תלויה לחלוטין
+-- Relationship a (0..1) - CASCADE because d fully depends on it
 ALTER TABLE d
     ADD CONSTRAINT fk_d_a
     FOREIGN KEY (a_aa)
     REFERENCES a(aa)
     ON DELETE CASCADE;
 
--- 🔑 קשר b (1) - Composite FK - CASCADE כי d תלויה לחלוטין
+-- 🔑 Relationship b (1) - composite FK - CASCADE because d fully depends on it
 ALTER TABLE d
     ADD CONSTRAINT fk_d_b
     FOREIGN KEY (b_ba, b_bb)
     REFERENCES b(ba, bb)
     ON DELETE CASCADE;
 
--- קשר c (N) - CASCADE כי d תלויה לחלוטין
+-- Relationship c (N) - CASCADE because d fully depends on it
 ALTER TABLE d
     ADD CONSTRAINT fk_d_c
     FOREIGN KEY (c_cc)
@@ -74,56 +74,55 @@ ALTER TABLE d
 
 
 -- ========================================
--- שלב 3: UNIQUE Constraints (cardinality-based)
+-- Step 3: UNIQUE Constraints (cardinality-based)
 -- ========================================
 
--- ✅ UNIQUE על a_aa (0..1 "At most once")
--- מאפשר NULL, אבל אם קיים ערך - הוא ייחודי
+-- ✅ UNIQUE on a_aa (0..1 "At most once")
+-- Allows NULL, but if a value exists – it must be unique
 ALTER TABLE d
     ADD CONSTRAINT uq_d_a
     UNIQUE (a_aa);
 
--- ❌ לא צריך UNIQUE על (b_ba, b_bb) - כבר PRIMARY KEY!
--- (PRIMARY KEY כבר מאכף UNIQUE אוטומטית)
+-- ❌ No need for UNIQUE on (b_ba, b_bb) – already the PRIMARY KEY!
 
--- ❌ לא צריך UNIQUE על c_cc - קרדינליות N (Many)
+-- ❌ No need for UNIQUE on c_cc – cardinality N (Many)
 
 
 -- ========================================
--- שלב 4: אינדקסים לביצועים
+-- Step 4: Indexes for performance
 -- ========================================
 
--- ✅ אינדקס על a_aa (למרות ש-UNIQUE יוצר אינדקס, נוסיף במפורש לבהירות)
+-- ✅ Index on a_aa (although UNIQUE creates one automatically, added for clarity)
 CREATE INDEX idx_d_a ON d(a_aa);
 
--- ❌ לא צריך אינדקס על (b_ba, b_bb) - PRIMARY KEY יוצר אינדקס אוטומטית!
+-- ❌ No need for index on (b_ba, b_bb) – PRIMARY KEY already creates one!
 
--- ✅ אינדקס על c_cc (cardinality N - צריך לביצועי JOIN)
+-- ✅ Index on c_cc (cardinality N – needed for JOIN performance)
 CREATE INDEX idx_d_c ON d(c_cc);
 
 
 -- ========================================
--- שלב 5: דוגמאות INSERT (אופציונלי)
+-- Step 5: INSERT Examples (optional)
 -- ========================================
 
 -- INSERT INTO a VALUES ('a1', 'value_ab');
 -- INSERT INTO b VALUES ('b1', 'b1_val');
 -- INSERT INTO c VALUES ('c1', 'value_cd');
 
--- דוגמאות INSERT לטבלה d:
+-- Example INSERTs for table d:
 
--- ✅ חוקי: a_aa הוא NULL (0..1 = אופציונלי)
+-- ✅ Valid: a_aa is NULL (0..1 = optional)
 -- INSERT INTO d (dvsvs, a_aa, b_ba, b_bb, c_cc)
 -- VALUES ('data1', NULL, 'b1', 'b1_val', 'c1');
 
--- ✅ חוקי: a_aa קיים (אבל רק פעם אחת!)
+-- ✅ Valid: a_aa exists (but only once!)
 -- INSERT INTO d (dvsvs, a_aa, b_ba, b_bb, c_cc)
 -- VALUES ('data2', 'a1', 'b1', 'b1_val', 'c1');
 
--- ❌ לא חוקי: לא יכול להיות שני d's עם אותו b (b הוא PK!)
+-- ❌ Invalid: cannot have two d records with the same b (b is the PK!)
 -- INSERT INTO d (dvsvs, a_aa, b_ba, b_bb, c_cc)
 -- VALUES ('data3', 'a2', 'b1', 'b1_val', 'c2');  -- ERROR: duplicate key
 
 -- ========================================
--- סיום
+-- End
 -- ========================================
