@@ -1,10 +1,11 @@
 import React from 'react';
-import { Plus, Save, Home, Database, FileCode, Link } from 'lucide-react';
+import { Plus, Save, Home, Database, FileCode, Link, BarChart3 } from 'lucide-react';
 import Button from '../Common/Button';
 import { useNavigate } from 'react-router-dom';
 import useProjectStore from '../../store/projectStore';
 import { downloadDSDHTML } from '../../utils/dsdExporter';
 import { downloadSQL } from '../../utils/sqlGenerator';
+import { downloadNormalizationReport } from '../../utils/normalizationAnalyzer';
 
 const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving }) => {
   const navigate = useNavigate();
@@ -58,6 +59,31 @@ const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving
     }
   };
 
+  /**
+   * Handle Normalization Analysis
+   * ניתוח רמת נרמול - NEW! 🎯
+   */
+  const handleNormalizationAnalysis = () => {
+    if (!nodes || nodes.length === 0) {
+      alert('אין נתונים לניתוח. אנא צור ישויות וקשרים תחילה.');
+      return;
+    }
+    
+    const entities = nodes.filter(n => n.type === 'entity');
+    if (entities.length === 0) {
+      alert('אנא צור לפחות ישות אחת לפני ניתוח נרמול');
+      return;
+    }
+    
+    try {
+      downloadNormalizationReport(nodes, `${projectName}_normalization.html`);
+      console.log('✅ Normalization report generated successfully!');
+    } catch (error) {
+      console.error('שגיאה בניתוח נרמול:', error);
+      alert('אירעה שגיאה בניתוח נרמול. אנא נסה שוב.');
+    }
+  };
+
   return (
     <div className="bg-white shadow-md border-b border-gray-200">
       <div className="px-6 py-4 flex items-center justify-between">
@@ -96,7 +122,7 @@ const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving
 
           <div className="border-r border-gray-300 h-8"></div>
 
-          {/* ✅ Generate DSD button - connected! */}
+          {/* ✅ Generate DSD button */}
           <Button
             onClick={handleExportDSD}
             variant="ghost"
@@ -107,7 +133,7 @@ const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving
             הפק DSD
           </Button>
 
-          {/* ✅ Generate SQL button - connected! */}
+          {/* ✅ Generate SQL button */}
           <Button
             onClick={handleExportSQL}
             variant="ghost"
@@ -116,6 +142,17 @@ const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving
             className="hover:bg-gray-100"
           >
             הפק SQL
+          </Button>
+
+          {/* 🆕 Normalization Analysis button - NEW! */}
+          <Button
+            onClick={handleNormalizationAnalysis}
+            variant="ghost"
+            size="md"
+            icon={BarChart3}
+            className="hover:bg-purple-50 text-purple-600 hover:text-purple-700"
+          >
+            ניתוח נרמול
           </Button>
         </div>
 
