@@ -22,7 +22,6 @@ services:
   - type: web
     name: sql-designer-frontend
     env: static
-    region: frankfurt
     buildCommand: "cd Frontend && npm install && npm run build"
     staticPublishPath: ./Frontend/dist
     routes:
