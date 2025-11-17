@@ -3,7 +3,7 @@ services:
   - type: web
     name: sql-designer-backend
     env: python
-    region: frankfurt  # EU region (קרוב לישראל)
+    region: frankfurt  # EU region 
     buildCommand: "./build.sh"
     startCommand: "gunicorn --bind 0.0.0.0:$PORT --chdir Backend app:app"
     envVars:
