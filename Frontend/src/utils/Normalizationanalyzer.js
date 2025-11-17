@@ -1,6 +1,6 @@
 /**
  * Normalization Analyzer
- * מנתח רמת נרמול של מבנה מסד נתונים (1NF - 5NF)
+ * Analyzes the normalization level of a database structure (1NF - 5NF)
  */
 
 import { convertERDtoDSD } from './erdToDsdConverter';
@@ -136,11 +136,11 @@ const generateErrorReport = (errorMessage) => {
 };
 
 /**
- * בדיקת 1NF (First Normal Form)
- * כללים:
- * - אין תכונות מרובות ערכים (multi-valued attributes)
- * - כל תכונה מכילה ערך אטומי אחד
- * - יש מפתח ראשי
+ * Check 1NF (First Normal Form)
+ * Rules:
+ * - No multi-valued attributes
+ * - Each attribute contains a single atomic value
+ * - Has a primary key
  */
 const check1NF = (tables) => {
   const violations = [];
@@ -155,45 +155,45 @@ const check1NF = (tables) => {
     const tableName = table.data.name || 'Unknown';
     const attributes = table.data.attributes || [];
     
-    // 🔧 חילוץ מפתחות ראשיים מתוך attributes
+    // 🔧 Extract primary keys from attributes
     let primaryKeys = attributes.filter(attr => attr && attr.isPrimaryKey);
     
-    // 🔧 אם אין מפתח מוגדר אבל יש תכונות - נתייחס לתכונה הראשונה כמפתח זמני
+    // 🔧 If no key is defined but attributes exist - treat the first attribute as a temporary key
     let hasImplicitPK = false;
     if (primaryKeys.length === 0 && attributes.length > 0) {
-      // נתייחס לתכונה הראשונה כמפתח זמני לצורך הבדיקות
+      // Treat the first attribute as a temporary key for the checks
       primaryKeys = [attributes[0]];
       hasImplicitPK = true;
       
-      // ⚠️ נוסיף אזהרה אבל לא נכשיל את הבדיקה (כדי שהבדיקות הבאות ימשיכו)
+      // ⚠️ Add a warning but don't fail the check (so subsequent checks can continue)
       violations.push({
         table: tableName,
         issue: '⚠️ אזהרה: מפתח ראשי לא מוגדר רשמית',
         description: `הטבלה "${tableName}" לא הגדירה מפתח ראשי באופן מפורש. המערכת מתייחסת ל-"${attributes[0].name}" כמפתח זמני.`,
         suggestion: `הגדר מפתח ראשי מפורש על ידי סימון התכונה המתאימה כ-Primary Key (🔑)`,
-        isWarning: true  // 🔧 זו אזהרה ולא שגיאה חמורה
+        isWarning: true  // 🔧 This is a warning, not a critical error
       });
-      // ✅ לא נגדיר passed = false כדי שהבדיקות ימשיכו
+      // ✅ We don't set passed = false so checks can continue
     } else if (primaryKeys.length === 0 && attributes.length === 0) {
-      // אין תכונות בכלל - זו שגיאה אמיתית
+      // No attributes at all - this is a real error
       violations.push({
         table: tableName,
         issue: 'טבלה ריקה',
         description: `הטבלה "${tableName}" לא מכילה תכונות כלל`
       });
-      passed = false;  // ❌ זו שגיאה אמיתית
+      passed = false;  // ❌ This is a real error
     }
 
-    // בדיקה 2: זיהוי תכונות מרובות ערכים (לפי שמות חשודים)
+    // Check 2: Identify multi-valued attributes (based on suspicious names)
     attributes.forEach(attr => {
       if (!attr || !attr.name) return;
       
       const suspiciousPatterns = [
-        /phone[s]?[_]?[12]/i,      // phone1, phone2, phones
-        /email[s]?[_]?[12]/i,      // email1, email2
-        /address[s]?[_]?[12]/i,    // address1, address2
-        /מספר.*[12]/,              // מספר_טלפון1, מספר_טלפון2
-        /כתובת.*[12]/              // כתובת1, כתובת2
+        /phone[s]?[_]?[12]/i,     // phone1, phone2, phones
+        /email[s]?[_]?[12]/i,     // email1, email2
+        /address[s]?[_]?[12]/i,   // address1, address2
+        /מספר.*[12]/,            // (Hebrew for number_phone1, number_phone2)
+        /כתובת.*[12]/             // (Hebrew for address1, address2)
       ];
 
       const isMultiValued = suspiciousPatterns.some(pattern => pattern.test(attr.name));
@@ -214,11 +214,11 @@ const check1NF = (tables) => {
 };
 
 /**
- * בדיקת 2NF (Second Normal Form)
- * כללים:
- * - עומדת ב-1NF
- * - אין תלויות חלקיות (partial dependencies)
- * - כל תכונה שאינה מפתח תלויה במפתח הראשי המלא
+ * Check 2NF (Second Normal Form)
+ * Rules:
+ * - Meets 1NF
+ * - No partial dependencies
+ * - Every non-key attribute is fully dependent on the entire primary key
  */
 const check2NF = (tables) => {
   const violations = [];
@@ -231,27 +231,27 @@ const check2NF = (tables) => {
     const attributes = table.data.attributes || [];
     const tableName = table.data.name || 'Unknown';
     
-    // 🔧 חילוץ מפתחות ראשיים מתוך attributes
+    // 🔧 Extract primary keys from attributes
     let primaryKeys = attributes.filter(attr => attr && attr.isPrimaryKey);
     
-    // 🔧 אם אין מפתח מוגדר אבל יש תכונות - נתייחס לתכונה הראשונה כמפתח זמני
+    // 🔧 If no key is defined but attributes exist - treat the first attribute as a temporary key
     if (primaryKeys.length === 0 && attributes.length > 0) {
       primaryKeys = [attributes[0]];
     }
     
     const pkNames = primaryKeys.map(pk => pk.name);
     
-    // 2NF רלוונטי רק אם יש מפתח מורכב
+    // 2NF is only relevant if there is a composite key
     if (pkNames.length > 1) {
       const nonKeyColumns = attributes.filter(
         attr => attr && attr.name && !pkNames.includes(attr.name)
       );
 
-      // זיהוי תלויות חלקיות פוטנציאליות
-      // אם שם עמודה מכיל חלק מהמפתח המורכב - זו תלות חלקית חשודה
+      // Identify potential partial dependencies
+      // If a column name contains part of the composite key - it's a suspected partial dependency
       nonKeyColumns.forEach(col => {
         pkNames.forEach(keyPart => {
-          // הסר סיומות נפוצות כדי להשוות
+          // Remove common suffixes to compare
           const keyBase = keyPart.replace(/_id$/i, '').replace(/_code$/i, '');
           
           if (col.name.toLowerCase().includes(keyBase.toLowerCase()) && 
@@ -273,11 +273,11 @@ const check2NF = (tables) => {
 };
 
 /**
- * בדיקת 3NF (Third Normal Form)
- * כללים:
- * - עומדת ב-2NF
- * - אין תלויות טרנזיטיביות
- * - תכונות שאינן מפתח לא תלויות בתכונות אחרות שאינן מפתח
+ * Check 3NF (Third Normal Form)
+ * Rules:
+ * - Meets 2NF
+ * - No transitive dependencies
+ * - Non-key attributes do not depend on other non-key attributes
  */
 const check3NF = (tables) => {
   const violations = [];
@@ -290,10 +290,10 @@ const check3NF = (tables) => {
     const attributes = table.data.attributes || [];
     const tableName = table.data.name || 'Unknown';
     
-    // 🔧 חילוץ מפתחות ראשיים מתוך attributes
+    // 🔧 Extract primary keys from attributes
     let primaryKeys = attributes.filter(attr => attr && attr.isPrimaryKey);
     
-    // 🔧 אם אין מפתח מוגדר אבל יש תכונות - נתייחס לתכונה הראשונה כמפתח זמני
+    // 🔧 If no key is defined but attributes exist - treat the first attribute as a temporary key
     if (primaryKeys.length === 0 && attributes.length > 0) {
       primaryKeys = [attributes[0]];
     }
@@ -304,7 +304,7 @@ const check3NF = (tables) => {
       attr => attr && attr.name && !pkNames.includes(attr.name) && !attr.isForeignKey
     );
 
-    // זיהוי קבוצות עמודות עם קידומת משותפת (תלות טרנזיטיבית חשודה)
+    // Identify groups of columns with a common prefix (suspected transitive dependency)
     const columnGroups = {};
     
     nonKeyColumns.forEach(col => {
@@ -318,7 +318,7 @@ const check3NF = (tables) => {
       }
     });
 
-    // אם יש יותר מ-2 עמודות עם אותה קידומת - תלות טרנזיטיבית חשודה
+    // If there are 2 or more columns with the same prefix - suspected transitive dependency
     Object.entries(columnGroups).forEach(([prefix, cols]) => {
       if (cols.length >= 2) {
         violations.push({
@@ -336,10 +336,10 @@ const check3NF = (tables) => {
 };
 
 /**
- * בדיקת BCNF (Boyce-Codd Normal Form)
- * כללים:
- * - עומדת ב-3NF
- * - כל קובע (determinant) הוא מפתח מועמד
+ * Check BCNF (Boyce-Codd Normal Form)
+ * Rules:
+ * - Meets 3NF
+ * - Every determinant is a candidate key
  */
 const checkBCNF = (tables) => {
   const violations = [];
@@ -352,23 +352,23 @@ const checkBCNF = (tables) => {
     const attributes = table.data.attributes || [];
     const tableName = table.data.name || 'Unknown';
     
-    // 🔧 חילוץ מפתחות ראשיים מתוך attributes
+    // 🔧 Extract primary keys from attributes
     let primaryKeys = attributes.filter(attr => attr && attr.isPrimaryKey);
     
-    // 🔧 אם אין מפתח מוגדר אבל יש תכונות - נתייחס לתכונה הראשונה כמפתח זמני
+    // 🔧 If no key is defined but attributes exist - treat the first attribute as a temporary key
     if (primaryKeys.length === 0 && attributes.length > 0) {
       primaryKeys = [attributes[0]];
     }
     
     const pkNames = primaryKeys.map(pk => pk.name);
     
-    // BCNF מורכבת - נבדוק מקרים פשוטים
-    // אם יש מפתח ייחודי נוסף שאינו PK - זה מועמד ל-BCNF
+    // BCNF is complex - check simple cases
+    // If there is another unique key that is not the PK - it's a BCNF candidate
     const uniqueConstraints = attributes.filter(attr => 
       attr && attr.isUnique && !pkNames.includes(attr.name)
     );
 
-    // אם יש תכונה ייחודית שתכונות אחרות תלויות בה - בעיית BCNF
+    // If there is a unique attribute that other attributes depend on - BCNF problem
     if (uniqueConstraints.length > 0) {
       violations.push({
         table: tableName,
@@ -384,10 +384,10 @@ const checkBCNF = (tables) => {
 };
 
 /**
- * בדיקת 4NF (Fourth Normal Form)
- * כללים:
- * - עומדת ב-BCNF
- * - אין תלויות מרובות ערכים (multi-valued dependencies)
+ * Check 4NF (Fourth Normal Form)
+ * Rules:
+ * - Meets BCNF
+ * - No multi-valued dependencies (MVD)
  */
 const check4NF = (tables) => {
   const violations = [];
@@ -400,10 +400,10 @@ const check4NF = (tables) => {
     const attributes = table.data.attributes || [];
     const tableName = table.data.name || 'Unknown';
     
-    // 🔧 חילוץ foreign keys מתוך attributes
+    // 🔧 Extract foreign keys from attributes
     const foreignKeyAttrs = attributes.filter(attr => attr && attr.isForeignKey);
     
-    // קבץ לפי foreignKeyGroup
+    // Group by foreignKeyGroup
     const fkGroups = new Map();
     foreignKeyAttrs.forEach(fk => {
       const groupId = fk.foreignKeyGroup || `single_${fk.name}`;
@@ -416,14 +416,14 @@ const check4NF = (tables) => {
       fkGroups.get(groupId).columns.push(fk);
     });
     
-    // סמן קבוצות מורכבות
+    // Mark composite groups
     fkGroups.forEach(group => {
       group.isComposite = group.columns.length > 1;
     });
     
     const fks = Array.from(fkGroups.values());
     
-    // אם יש יותר מ-2 FK עצמאיים - MVD חשודה
+    // If there are 2 or more independent FKs - suspected MVD
     if (fks.length >= 2) {
       const independentFKs = fks.filter(fk => !fk.isComposite);
       
@@ -443,10 +443,10 @@ const check4NF = (tables) => {
 };
 
 /**
- * בדיקת 5NF (Fifth Normal Form / Project-Join Normal Form)
- * כללים:
- * - עומדת ב-4NF
- * - אין תלויות חיבור (join dependencies)
+ * Check 5NF (Fifth Normal Form / Project-Join Normal Form)
+ * Rules:
+ * - Meets 4NF
+ * - No join dependencies
  */
 const check5NF = (tables) => {
   const violations = [];
@@ -459,10 +459,10 @@ const check5NF = (tables) => {
     const attributes = table.data.attributes || [];
     const tableName = table.data.name || 'Unknown';
     
-    // 🔧 חילוץ foreign keys מתוך attributes וקיבוץ לפי foreignKeyGroup
+    // 🔧 Extract foreign keys from attributes and group by foreignKeyGroup
     const foreignKeyAttrs = attributes.filter(attr => attr && attr.isForeignKey);
     
-    // קבץ לפי foreignKeyGroup
+    // Group by foreignKeyGroup
     const fkGroups = new Set();
     foreignKeyAttrs.forEach(fk => {
       const groupId = fk.foreignKeyGroup || `single_${fk.name}`;
@@ -471,7 +471,7 @@ const check5NF = (tables) => {
     
     const numFKGroups = fkGroups.size;
     
-    // 5NF רלוונטי לטבלאות עם 3+ FK groups (n-ary relationships)
+    // 5NF is relevant for tables with 3+ FK groups (n-ary relationships)
     if (numFKGroups >= 3) {
       violations.push({
         table: tableName,
@@ -487,9 +487,9 @@ const check5NF = (tables) => {
 };
 
 /**
- * ניתוח מלא של רמת הנרמול
+ * Full analysis of normalization level
  * @param {Array} nodes - ERD nodes
- * @returns {Object} דוח נרמול מפורט
+ * @returns {Object} Detailed normalization report
  */
 export const analyzeNormalization = (nodes) => {
   try {
@@ -507,7 +507,7 @@ export const analyzeNormalization = (nodes) => {
       };
     }
   
-  // בדיקת כל רמה לפי הסדר
+  // Check each level in order
   const nf1 = check1NF(tables);
   const nf2 = nf1.passed ? check2NF(tables) : { passed: false, violations: [] };
   const nf3 = nf2.passed ? check3NF(tables) : { passed: false, violations: [] };
@@ -515,7 +515,7 @@ export const analyzeNormalization = (nodes) => {
   const nf4 = bcnf.passed ? check4NF(tables) : { passed: false, violations: [] };
   const nf5 = nf4.passed ? check5NF(tables) : { passed: false, violations: [] };
 
-  // קביעת רמת הנרמול הנוכחית
+  // Determine the current normalization level
   let currentLevel = '0NF';
   let nextLevel = '1NF';
   
@@ -541,7 +541,7 @@ export const analyzeNormalization = (nodes) => {
   }
   if (nf5.passed) {
     currentLevel = '5NF';
-    nextLevel = null; // הגענו לשיא!
+    nextLevel = null; // Reached the peak!
   }
 
   return {
@@ -570,7 +570,7 @@ export const analyzeNormalization = (nodes) => {
 };
 
 /**
- * יצירת דוח HTML מפורט
+ * Generate a detailed HTML report
  */
 export const generateNormalizationReport = (nodes) => {
   const analysis = analyzeNormalization(nodes);
@@ -584,8 +584,8 @@ export const generateNormalizationReport = (nodes) => {
     '1NF': 'תכונות אטומיות, אין ערכים מרובים, יש מפתח ראשי',
     '2NF': 'אין תלויות חלקיות - כל תכונה תלויה במפתח המלא',
     '3NF': 'אין תלויות טרנזיטיביות - תכונות לא תלויות בתכונות אחרות',
-    'BCNF': 'כל קובע הוא מפתח מועמד',
-    '4NF': 'אין תלויות מרובות ערכים (MVD)',
+    '4NF': 'כל קובע הוא מפתח מועמד',
+    'BCNF': 'אין תלויות מרובות ערכים (MVD)',
     '5NF': 'אין תלויות חיבור (Join Dependencies)'
   };
 
@@ -851,7 +851,7 @@ export const generateNormalizationReport = (nodes) => {
             <h2 style="margin-bottom: 20px; color: #333; font-size: 1.8rem;">🔍 בדיקות מפורטות</h2>
   `;
 
-  // הוספת כל הבדיקות
+  // Add all checks
   Object.entries(analysis.checks).forEach(([level, result]) => {
     const passed = result.passed;
     const statusClass = passed ? 'passed' : 'failed';
@@ -877,12 +877,12 @@ export const generateNormalizationReport = (nodes) => {
         const borderColor = isWarning ? '#ffc107' : '#e74c3c';
         
         html += `
-                    <div class="${warningClass}" style="border-right-color: ${borderColor}">
-                        <div class="violation-table">📋 טבלה: ${violation.table}</div>
-                        <div class="violation-issue">${isWarning ? '⚠️' : '❌'} ${violation.issue}</div>
-                        <div class="violation-description">${violation.description}</div>
-                        ${violation.suggestion ? `<div class="violation-suggestion">${violation.suggestion}</div>` : ''}
-                    </div>
+                        <div class="${warningClass}" style="border-right-color: ${borderColor}">
+                            <div class="violation-table">📋 טבלה: ${violation.table}</div>
+                            <div class="violation-issue">${isWarning ? '⚠️' : '❌'} ${violation.issue}</div>
+                            <div class="violation-description">${violation.description}</div>
+                            ${violation.suggestion ? `<div class="violation-suggestion">${violation.suggestion}</div>` : ''}
+                        </div>
         `;
       });
       
@@ -896,7 +896,7 @@ export const generateNormalizationReport = (nodes) => {
         </div>
   `;
 
-  // הצעות לשלב הבא
+  // Next steps suggestions
   if (analysis.nextLevel) {
     html += `
         <div class="next-steps">
@@ -925,7 +925,7 @@ export const generateNormalizationReport = (nodes) => {
 };
 
 /**
- * הורדת דוח HTML
+ * Download HTML report
  */
 export const downloadNormalizationReport = (nodes, filename = 'normalization_report.html') => {
   const html = generateNormalizationReport(nodes);
