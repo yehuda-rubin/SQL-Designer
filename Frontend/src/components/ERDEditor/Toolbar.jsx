@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import useProjectStore from '../../store/projectStore';
 import { downloadDSDHTML } from '../../utils/dsdExporter';
 import { downloadSQL } from '../../utils/sqlGenerator';
-import { downloadNormalizationReport } from '../../utils/NormalizationAnalyzer';
+import { downloadNormalizationReport } from '../../utils/Normalizationanalyzer';
 
 const Toolbar = ({ projectName, onAddEntity, onAddRelationship, onSave, isSaving }) => {
   const navigate = useNavigate();
