@@ -12,14 +12,17 @@ import 'reactflow/dist/style.css';
 
 import EntityNode from './EntityNode';
 import RelationshipNode from './RelationshipNode';
+import AttributeNode from './AttributeNode';
 import CustomEdge from './CustomEdge';
 import PropertyPanel from './PropertyPanel';
 import EdgeEditModal from './EdgeEditModal';
 import useProjectStore from '../../store/projectStore';
 
+// ============ UPDATED: Added 'attribute' node type ============
 const nodeTypes = {
   entity: EntityNode,
   relationship: RelationshipNode,
+  attribute: AttributeNode, // NEW
 };
 
 const edgeTypes = {
@@ -99,8 +102,18 @@ const ERDCanvas = () => {
 
       // Prevent relationship-to-relationship connection
       if (sourceNode?.type === 'relationship' && targetNode?.type === 'relationship') {
-        alert('You cannot connect one relationship to another!');
+        alert('לא ניתן לחבר יחס ליחס אחר!');
         return false;
+      }
+
+      // ============ NEW: Allow attribute-to-entity/relationship connections ============
+      // Attributes can only connect to entities or relationships
+      if (sourceNode?.type === 'attribute' || targetNode?.type === 'attribute') {
+        const nonAttributeNode = sourceNode?.type === 'attribute' ? targetNode : sourceNode;
+        if (nonAttributeNode?.type !== 'entity' && nonAttributeNode?.type !== 'relationship') {
+          alert('תכונות יכולות להתחבר רק לישויות או יחסים!');
+          return false;
+        }
       }
 
       return true;
@@ -108,7 +121,7 @@ const ERDCanvas = () => {
     [nodes]
   );
 
-  // Manual edge creation (only between entities)
+  // Manual edge creation
   const onConnect = useCallback(
     (params) => {
       if (!isValidConnection(params)) {
@@ -118,18 +131,34 @@ const ERDCanvas = () => {
       const sourceNode = nodes.find((n) => n.id === params.source);
       const targetNode = nodes.find((n) => n.id === params.target);
 
-      // Prevent manual edge creation if source or target is a relationship
-      if (sourceNode?.type === 'relationship' || targetNode?.type === 'relationship') {
-        alert('Relationships are managed only via the PropertyPanel!');
+      // ============ NEW: Handle attribute connections ============
+      if (sourceNode?.type === 'attribute' || targetNode?.type === 'attribute') {
+        // Create simple edge for attribute connections
+        const newEdge = {
+          ...params,
+          id: `e${params.source}-${params.target}-${Date.now()}`,
+          type: 'default',
+          style: { stroke: '#94a3b8', strokeWidth: 1.5 },
+          animated: false,
+        };
+        setEdges((eds) => addEdge(newEdge, eds));
+        setStoreEdges([...edges, newEdge]);
         return;
       }
 
+      // Prevent manual edge creation if source or target is a relationship
+      if (sourceNode?.type === 'relationship' || targetNode?.type === 'relationship') {
+        alert('יחסים מנוהלים רק דרך פאנל המאפיינים!');
+        return;
+      }
+
+      // Regular entity-to-entity connection
       const newEdge = {
         ...params,
         id: `e${params.source}-${params.target}-${Date.now()}`,
         type: 'custom',
         data: {
-          cardinality: '1', // default value
+          cardinality: '1',
           label: '1:N',
         },
         animated: true,
@@ -158,9 +187,19 @@ const ERDCanvas = () => {
 
   // Node double-click
   const onNodeDoubleClick = useCallback((event, node) => {
-    setSelectedEntity(node);
+    // ============ NEW: Attributes open their parent entity/relationship panel ============
+    if (node.type === 'attribute') {
+      const parentNode = nodes.find(n => n.id === node.data.parentId);
+      if (parentNode) {
+        setSelectedEntity(parentNode);
+      } else {
+        setSelectedEntity(node);
+      }
+    } else {
+      setSelectedEntity(node);
+    }
     setSelectedEdge(null);
-  }, []);
+  }, [nodes]);
 
   // Edge click
   const onEdgeClick = useCallback((event, edge) => {
@@ -191,9 +230,19 @@ const ERDCanvas = () => {
       
       // If it's a relationship with connections, generate edges automatically
       if (node?.type === 'relationship' && data.connections) {
-        // Remove old edges of that relationship
+        // Remove old edges of that relationship (but keep attribute edges)
         const edgesWithoutRelationship = edges.filter(
-          (edge) => edge.source !== nodeId && edge.target !== nodeId
+          (edge) => {
+            // Keep attribute edges
+            const sourceNode = nodes.find(n => n.id === edge.source);
+            const targetNode = nodes.find(n => n.id === edge.target);
+            if (sourceNode?.type === 'attribute' || targetNode?.type === 'attribute') {
+              return true;
+            }
+            
+            // Remove relationship edges
+            return edge.source !== nodeId && edge.target !== nodeId;
+          }
         );
         
         // Create new edges
@@ -207,71 +256,78 @@ const ERDCanvas = () => {
       
       // Update store
       const updatedNodes = nodes.map((node) =>
-        node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
+        node.id === nodeId
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                ...data,
+              },
+            }
+          : node
       );
       setStoreNodes(updatedNodes);
-      setSelectedEntity(null);
     },
-    [nodes, edges, setNodes, setEdges, setStoreNodes, setStoreEdges, createEdgesFromRelationship]
+    [nodes, edges, setNodes, setEdges, setStoreEdges, setStoreNodes, createEdgesFromRelationship]
   );
 
-  // Save edge updates (cardinality/label)
+  // Save edge changes
   const handleSaveEdge = useCallback(
-    (edgeId, data) => {
+    (edgeId, newData) => {
       setEdges((eds) =>
-        eds.map((edge) => {
-          if (edge.id === edgeId) {
-            return {
+        eds.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                data: {
+                  ...edge.data,
+                  ...newData,
+                },
+              }
+            : edge
+        )
+      );
+      
+      const updatedEdges = edges.map((edge) =>
+        edge.id === edgeId
+          ? {
               ...edge,
               data: {
                 ...edge.data,
-                ...data,
+                ...newData,
               },
-            };
-          }
-          return edge;
-        })
-      );
-
-      const updatedEdges = edges.map((edge) =>
-        edge.id === edgeId ? { ...edge, data: { ...edge.data, ...data } } : edge
+            }
+          : edge
       );
       setStoreEdges(updatedEdges);
-      setSelectedEdge(null);
     },
     [edges, setEdges, setStoreEdges]
   );
 
-  // Delete entity/relationship
-  const handleDeleteEntity = useCallback(
-    (nodeId) => {
-      const node = nodes.find((n) => n.id === nodeId);
-      const typeName = node?.type === 'relationship' ? 'relationship' : 'entity';
-      
-      if (window.confirm(`Are you sure you want to delete this ${typeName}?`)) {
-        deleteNode(nodeId);
-        setNodes((nds) => nds.filter((node) => node.id !== nodeId));
-        setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
-        setSelectedEntity(null);
-      }
-    },
-    [nodes, deleteNode, setNodes, setEdges]
-  );
-
-  // Add onDelete and onEdit actions to each node
-  const nodesWithActions = nodes.map((node) => ({
+  // ============ UPDATED: Assign callbacks to all node types including attributes ============
+  const nodesWithCallbacks = nodes.map((node) => ({
     ...node,
     data: {
       ...node.data,
-      onDelete: () => handleDeleteEntity(node.id),
-      onEdit: () => setSelectedEntity(node),
+      onDelete: () => deleteNode(node.id),
+      onEdit: () => {
+        if (node.type === 'attribute') {
+          // For attributes, open their parent's panel
+          const parentNode = nodes.find(n => n.id === node.data.parentId);
+          if (parentNode) {
+            setSelectedEntity(parentNode);
+          }
+        } else {
+          setSelectedEntity(node);
+        }
+      },
     },
   }));
 
   return (
     <div className="w-full h-full relative">
       <ReactFlow
-        nodes={nodesWithActions}
+        nodes={nodesWithCallbacks}
         edges={edges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
@@ -282,7 +338,6 @@ const ERDCanvas = () => {
         onEdgeClick={onEdgeClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        isValidConnection={isValidConnection}
         fitView
         attributionPosition="bottom-left"
       >
@@ -290,32 +345,37 @@ const ERDCanvas = () => {
         <Controls />
         <MiniMap
           nodeColor={(node) => {
-            return node.type === 'relationship' ? '#9333ea' : '#3b82f6';
+            switch (node.type) {
+              case 'entity':
+                return '#3b82f6';
+              case 'relationship':
+                return '#9333ea';
+              case 'attribute':
+                return node.data.isPrimaryKey ? '#eab308' : '#94a3b8';
+              default:
+                return '#6b7280';
+            }
           }}
-          maskColor="rgba(0, 0, 0, 0.1)"
         />
       </ReactFlow>
 
-      {/* Property Panel for Entity/Relationship */}
-      <PropertyPanel
-        entity={selectedEntity}
-        onClose={() => setSelectedEntity(null)}
-        onSave={handleSaveEntity}
-      />
+      {/* Property Panel */}
+      {selectedEntity && (
+        <PropertyPanel
+          entity={selectedEntity}
+          onClose={() => setSelectedEntity(null)}
+          onSave={handleSaveEntity}
+        />
+      )}
 
       {/* Edge Edit Modal */}
-      <EdgeEditModal
-        edge={selectedEdge}
-        onClose={() => setSelectedEdge(null)}
-        onSave={handleSaveEdge}
-        onDelete={(edgeId) => {
-          if (window.confirm('Are you sure you want to delete this relationship?')) {
-            setEdges((eds) => eds.filter((e) => e.id !== edgeId));
-            setStoreEdges(edges.filter((e) => e.id !== edgeId));
-            setSelectedEdge(null);
-          }
-        }}
-      />
+      {selectedEdge && selectedEdge.type === 'custom' && (
+        <EdgeEditModal
+          edge={selectedEdge}
+          onClose={() => setSelectedEdge(null)}
+          onSave={handleSaveEdge}
+        />
+      )}
     </div>
   );
 };

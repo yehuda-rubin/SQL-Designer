@@ -97,7 +97,8 @@ const enrichTableData = (table) => {
  * @returns {Object} - Complete DSD object
  */
 export const exportDSDGraphical = (nodes) => {
-  const { tables, relationships } = convertERDtoDSD(nodes);
+  const edges = useProjectStore.getState().edges; // הוסף שורה זו
+  const { tables, relationships } = convertERDtoDSD(nodes, edges);
   
   const positionedTables = calculateTablePositions(tables);
   const enrichedTables = positionedTables.map(enrichTableData);

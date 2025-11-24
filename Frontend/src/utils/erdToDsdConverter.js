@@ -1,24 +1,50 @@
 /**
- * ERD to DSD Converter - Ullman Method (FIXED VERSION)
+ * ERD to DSD Converter - Ullman Method (UPDATED FOR ULLMAN NOTATION)
  * Converts an ERD diagram to a DSD (Database Schema Diagram) according to Ullman's method
- * * ✅ Critical Fix: Preserves the true primary keys of the parent tables
+ * ✅ NOW supports AttributeNode instances (ellipses) instead of attributes array
  */
 
 /**
- * 🔧 New helper function - finds the primary keys of an entity
+ * 🔧 NEW Helper: Get attributes from connected AttributeNodes
+ * @param {Object} entity - The entity or relationship
+ * @param {Array} allNodes - All nodes in the diagram
+ * @param {Array} allEdges - All edges in the diagram
+ * @returns {Array} - Array of attributes from connected AttributeNodes
+ */
+const getAttributesFromNodes = (entity, allNodes, allEdges) => {
+  // Find all AttributeNodes connected to this entity/relationship
+  const connectedAttributeNodeIds = allEdges
+    .filter(edge => 
+      edge.source === entity.id || edge.target === entity.id
+    )
+    .map(edge => edge.source === entity.id ? edge.target : edge.source);
+  
+  const attributeNodes = allNodes.filter(node => 
+    node.type === 'attribute' && connectedAttributeNodeIds.includes(node.id)
+  );
+  
+  return attributeNodes.map(node => ({
+    name: node.data.name || 'unnamed',
+    type: node.data.type || 'VARCHAR(255)',
+    isPrimaryKey: node.data.isPrimaryKey || false
+  }));
+};
+
+/**
+ * 🔧 Helper function - finds the primary keys of an entity
  * @param {Object} entity - The entity
+ * @param {Array} allNodes - All nodes (to find AttributeNodes)
+ * @param {Array} allEdges - All edges (to find connections)
  * @returns {Array} - Array of primary keys
  */
-const getPrimaryKeys = (entity) => {
-  if (!entity || !entity.data || !entity.data.attributes) {
-    return [];
-  }
+const getPrimaryKeys = (entity, allNodes, allEdges) => {
+  const attributes = getAttributesFromNodes(entity, allNodes, allEdges);
   
-  const primaryKeys = entity.data.attributes.filter(attr => attr.isPrimaryKey);
+  const primaryKeys = attributes.filter(attr => attr.isPrimaryKey);
   
   // If no primary keys are defined, return the first column (fallback)
-  if (primaryKeys.length === 0 && entity.data.attributes.length > 0) {
-    return [entity.data.attributes[0]];
+  if (primaryKeys.length === 0 && attributes.length > 0) {
+    return [attributes[0]];
   }
   
   return primaryKeys;
@@ -48,197 +74,187 @@ const needsJunctionTable = (connections) => {
 };
 
 /**
- * 🔧 Adds a Foreign Key to a table - fixed!
+ * 🔧 Adds a Foreign Key to a table
  * Now saves the true primary keys of the referenced table
  * And groups them into one group when it's a Composite FK
  *
  * @param {Object} table - The table
  * @param {Object} referencedEntity - The referenced entity (not just a name!)
- * @param {String} cardinality - The connection's cardinality
- * @param {String} relationshipType - The relationship type ('1:1' or '1:N')
- * @returns {Object} - The updated table
+ * @param {String} cardinality - The cardinality from the relationship
+ * @param {String} relationshipType - The type of relationship (1:1, 1:N, N:N)
+ * @param {Array} allNodes - All nodes (for finding attributes)
+ * @param {Array} allEdges - All edges (for finding connections)
+ * @returns {Object} - Updated table with the FK
  */
-const addForeignKeyToTable = (table, referencedEntity, cardinality, relationshipType = '1:N') => {
-  if (!referencedEntity) return table;
+const addForeignKeyToTable = (table, referencedEntity, cardinality, relationshipType, allNodes, allEdges) => {
+  if (!table || !referencedEntity) return table;
 
-  const referencedTableName = referencedEntity.data.name;
+  // Get the TRUE primary keys of the referenced entity
+  const referencedPKs = getPrimaryKeys(referencedEntity, allNodes, allEdges);
 
-  // 🔧 Find the true primary keys of the referenced table
-  let referencedPrimaryKeys = getPrimaryKeys(referencedEntity);
-
-  // 🔧 Handle table with no defined primary key - uses the first attribute
-  if (referencedPrimaryKeys.length === 0) {
-    console.warn(`⚠️ אין מפתחות ראשיים ב-${referencedTableName} - משתמש בתכונה הראשונה`);
-    const attributes = referencedEntity.data.attributes || [];
-    if (attributes.length === 0) {
-      console.error(`❌ אין תכונות ב-${referencedTableName}`);
-      return table;
-    }
-    // Takes only the first attribute
-    referencedPrimaryKeys = [attributes[0]];
-  }
-
-  // 🔧 Create a unique ID for the FK group (for handling Composite FK)
-  const fkGroupId = `fk_${table.data.name}_${referencedTableName}_${Date.now()}`.toLowerCase();
-
-  // 🔧 Check if an FK to this table already exists
-  const existingFKGroup = table.data.attributes.find(attr =>
-    attr.isForeignKey && attr.references === referencedTableName
-  );
-
-  if (existingFKGroup) {
-    console.warn(`⚠️ כבר קיים FK ל-${referencedTableName} בטבלה ${table.data.name}`);
+  if (referencedPKs.length === 0) {
+    console.warn(`Warning: Entity ${referencedEntity.data.name} has no primary keys defined`);
     return table;
   }
 
-  // 🔧 Create an FK for each PK column in the parent table - as a unified group
-  const newForeignKeys = referencedPrimaryKeys.map((pkAttr, index) => {
-    const fkName = `${referencedTableName.toLowerCase()}_${pkAttr.name.toLowerCase()}`;
+  // Generate a unique group ID for this FK group (if composite)
+  const foreignKeyGroup = referencedPKs.length > 1 
+    ? `fk_group_${referencedEntity.data.name}_${Date.now()}`
+    : null;
 
-    return {
-      name: fkName,
-      type: pkAttr.type, // 🔧 Use the true type of the primary key!
-      isForeignKey: true,
-      references: referencedTableName,
-      referencedColumns: referencedPrimaryKeys.map(pk => pk.name), // 🔧 All FKs get all the referenced columns!
-      foreignKeyGroup: fkGroupId, // 🔧 FK group ID to link the columns
-      foreignKeyGroupIndex: index, // 🔧 Column's position in the group
-      foreignKeyGroupSize: referencedPrimaryKeys.length, // 🔧 Group size
-      cardinality: cardinality, // 🔧 Save the original cardinality
-      relationshipType: relationshipType, // 🔧 Save the relationship type (1:1 or 1:N)
-      isPrimaryKey: false,
-      isNullable: cardinality === '0..1' // If optional
-    };
-  });
+  // Create FK columns from the referenced PKs
+  const newForeignKeys = referencedPKs.map((pk, index) => ({
+    name: `${referencedEntity.data.name.toLowerCase()}_${pk.name}`,
+    type: pk.type,
+    isPrimaryKey: false,
+    isForeignKey: true,
+    references: referencedEntity.data.name,
+    referencedColumns: referencedPKs.map(rpk => rpk.name),
+    foreignKeyGroup: foreignKeyGroup,
+    foreignKeyGroupIndex: index,
+    foreignKeyGroupSize: referencedPKs.length,
+    isNullable: cardinality === '0..1',
+    cardinality: cardinality
+  }));
 
   return {
     ...table,
     data: {
       ...table.data,
-      attributes: [...table.data.attributes, ...newForeignKeys]
-    }
+      attributes: [...table.data.attributes, ...newForeignKeys],
+    },
   };
 };
 
 /**
- * 🔧 Creates a Junction Table from a relationship - fixed!
- * Now saves precise primary keys from all entities
- * And groups FKs into groups according to the original entity
- *
+ * Creates a Junction Table for N:N or N-ary relationships
  * @param {Object} relationship - The relationship object
- * @param {Array} entities - The entities array
- * @returns {Object} - The new table object
+ * @param {Array} entities - Array of entities
+ * @param {Array} allNodes - All nodes (for finding attributes)
+ * @param {Array} allEdges - All edges (for finding connections)
+ * @returns {Object} - Junction table
  */
-const createJunctionTable = (relationship, entities) => {
-  const { id, data } = relationship;
-  const { name, connections = [], attributes = [] } = data;
+const createJunctionTable = (relationship, entities, allNodes, allEdges) => {
+  const { connections = [], name: relationshipName } = relationship.data;
 
-  // Table name
-  const tableName = name || `Junction_${id}`;
+  // Create table name from relationship name
+  const tableName = relationshipName || 'junction_table';
 
-  // 🔧 Create Foreign Keys for each connected entity - with precise primary keys
-  const foreignKeys = [];
-  const primaryKeyColumns = []; // For creating a Composite PK
-
-  connections
-    .filter(conn => conn.entityId || conn.entityName)
-    .forEach(conn => {
-      const entity = entities.find(e =>
-        e.id === conn.entityId ||
+  // Find the connected entities
+  const connectedEntities = connections
+    .map(conn => {
+      return entities.find(e => 
+        e.id === conn.entityId || 
         e.data.name === conn.entityName
       );
+    })
+    .filter(e => e !== undefined);
 
-      if (!entity) {
-        console.warn(`⚠️ לא נמצאה ישות עבור ${conn.entityName || conn.entityId}`);
-        return;
-      }
+  if (connectedEntities.length < 2) {
+    console.warn(`Junction table creation failed: not enough entities connected`);
+    return null;
+  }
 
-      const entityName = entity.data.name;
-      const primaryKeys = getPrimaryKeys(entity);
+  // Collect all primary keys from connected entities
+  let junctionAttributes = [];
+  let junctionPrimaryKeys = [];
 
-      // 🔧 Create a unique ID for the FK group for this entity
-      const fkGroupId = `fk_${tableName}_${entityName}_${Date.now()}`.toLowerCase();
+  connectedEntities.forEach(entity => {
+    const entityPKs = getPrimaryKeys(entity, allNodes, allEdges);
+    
+    const foreignKeyGroup = entityPKs.length > 1 
+      ? `fk_group_${entity.data.name}_${Date.now()}`
+      : null;
 
-      // Create an FK for each of the entity's PKs - as a unified group
-      primaryKeys.forEach((pkAttr, index) => {
-        const fkName = `${entityName.toLowerCase()}_${pkAttr.name.toLowerCase()}`;
-
-        foreignKeys.push({
-          name: fkName,
-          type: pkAttr.type, // 🔧 True type
-          isForeignKey: true,
-          references: entityName,
-          referencedColumns: primaryKeys.map(pk => pk.name), // 🔧 All FKs get all the referenced columns!
-          foreignKeyGroup: fkGroupId, // 🔧 FK group ID
-          foreignKeyGroupIndex: index, // 🔧 Position in group
-          foreignKeyGroupSize: primaryKeys.length, // 🔧 Group size
-          cardinality: conn.cardinality || 'N', // 🔧 Save the cardinality (usually 'N' in a junction table)
-          isPrimaryKey: true // Part of the Composite Primary Key of the junction table
-        });
-
-        primaryKeyColumns.push(fkName);
+    entityPKs.forEach((pk, index) => {
+      const fkColumnName = `${entity.data.name.toLowerCase()}_${pk.name}`;
+      
+      junctionAttributes.push({
+        name: fkColumnName,
+        type: pk.type,
+        isPrimaryKey: true,
+        isForeignKey: true,
+        references: entity.data.name,
+        referencedColumns: entityPKs.map(rpk => rpk.name),
+        foreignKeyGroup: foreignKeyGroup,
+        foreignKeyGroupIndex: index,
+        foreignKeyGroupSize: entityPKs.length,
+        isNullable: false
       });
+      
+      junctionPrimaryKeys.push(fkColumnName);
     });
+  });
 
-  // Add the relationship's attributes as regular columns
-  const relationshipAttributes = attributes.map(attr => ({
-    ...attr,
-    isPrimaryKey: false,
-    isForeignKey: false
-  }));
+  // Add relationship attributes (from AttributeNodes connected to the relationship)
+  const relationshipAttributes = getAttributesFromNodes(relationship, allNodes, allEdges);
+  relationshipAttributes.forEach(attr => {
+    if (!attr.isPrimaryKey) {
+      junctionAttributes.push({
+        ...attr,
+        isPrimaryKey: false,
+        isForeignKey: false,
+      });
+    }
+  });
 
   return {
-    id: `table_${id}`,
+    id: `junction-${relationship.id}`,
     type: 'table',
     data: {
       name: tableName,
-      attributes: [...foreignKeys, ...relationshipAttributes],
+      attributes: junctionAttributes,
+      primaryKeys: junctionPrimaryKeys,
       isJunctionTable: true,
-      originalRelationship: id,
-      primaryKeyColumns // Save the PK list for use in the SQL Generator
+      sourceRelationship: relationship.id,
     },
-    position: relationship.position
   };
 };
 
 /**
  * Converts an entity to a table
- * @param {Object} entity - The entity object
- * @returns {Object} - The table object
+ * @param {Object} entity - Entity object
+ * @param {Array} allNodes - All nodes (for finding attributes)
+ * @param {Array} allEdges - All edges (for finding connections)
+ * @returns {Object} - Table object
  */
-const entityToTable = (entity) => {
+const entityToTable = (entity, allNodes, allEdges) => {
+  const { name } = entity.data;
+  
+  // Get attributes from connected AttributeNodes
+  const attributes = getAttributesFromNodes(entity, allNodes, allEdges);
+
   return {
     id: entity.id,
     type: 'table',
     data: {
-      name: entity.data.name,
-      attributes: entity.data.attributes || [],
-      isJunctionTable: false
+      name: name || 'unnamed_table',
+      attributes: attributes.length > 0 ? attributes : [],
+      primaryKeys: attributes.filter(a => a.isPrimaryKey).map(a => a.name),
     },
-    position: entity.position
   };
 };
 
 /**
- * Handles a 1:N or 1:1 relationship - adds FK to the appropriate side
+ * Handles 1:N or 1:1 relationships - adds FK to the appropriate table
  * @param {Object} relationship - The relationship
- * @param {Array} tables - The tables array
- * @param {Array} entities - The entities array
- * @returns {Array} - The updated tables array
+ * @param {Array} tables - Current array of tables
+ * @param {Array} entities - Array of entities
+ * @param {Array} allNodes - All nodes
+ * @param {Array} allEdges - All edges
+ * @returns {Array} - Updated array of tables
  */
-const handleOneToManyOrOneToOne = (relationship, tables, entities) => {
+const handleOneToManyOrOneToOne = (relationship, tables, entities, allNodes, allEdges) => {
   const { connections = [] } = relationship.data;
 
-  if (connections.length !== 2) return tables;
+  if (connections.length < 2) return tables;
 
-  const [conn1, conn2] = connections;
+  const conn1 = connections[0];
+  const conn2 = connections[1];
 
-  // 🔧 Identify relationship type: 1:1 or 1:N
-  const isOneToOne =
-    (conn1.cardinality === '1' || conn1.cardinality === '0..1') &&
-    (conn2.cardinality === '1' || conn2.cardinality === '0..1');
-
-  const relationshipType = isOneToOne ? '1:1' : '1:N';
+  // Determine relationship type
+  const relationshipType = conn1.cardinality === '1' && conn2.cardinality === '1'
+    ? '1:1' : '1:N';
 
   // Determine which side gets the FK
   let sourceTable, targetEntity, targetCardinality;
@@ -269,12 +285,14 @@ const handleOneToManyOrOneToOne = (relationship, tables, entities) => {
 
   if (!sourceTable || !targetEntity) return tables;
 
-  // 🔧 Add the FK - now also passes the relationship type
+  // Add the FK
   const updatedSourceTable = addForeignKeyToTable(
     sourceTable,
-    targetEntity, // 🔧 Passes the whole entity!
+    targetEntity,
     targetCardinality,
-    relationshipType // 🔧 Passes the relationship type
+    relationshipType,
+    allNodes,
+    allEdges
   );
 
   // Return the updated array
@@ -284,16 +302,17 @@ const handleOneToManyOrOneToOne = (relationship, tables, entities) => {
 };
 
 /**
- * Main conversion from ERD to DSD
- * @param {Array} nodes - Array of nodes (entities + relationships)
+ * Main conversion from ERD to DSD (UPDATED)
+ * @param {Array} nodes - Array of nodes (entities + relationships + attributes)
+ * @param {Array} edges - Array of edges
  * @returns {Object} - { tables, relationships }
  */
-export const convertERDtoDSD = (nodes) => {
+export const convertERDtoDSD = (nodes, edges) => {
   const entities = nodes.filter(n => n.type === 'entity');
   const relationships = nodes.filter(n => n.type === 'relationship');
   
-  // Step 1: Convert all entities to tables
-  let tables = entities.map(entityToTable);
+  // Step 1: Convert all entities to tables (with attributes from AttributeNodes)
+  let tables = entities.map(entity => entityToTable(entity, nodes, edges));
   
   // Step 2: Process all relationships
   const junctionTables = [];
@@ -303,11 +322,13 @@ export const convertERDtoDSD = (nodes) => {
     
     if (needsJunctionTable(connections)) {
       // Create junction table
-      const junctionTable = createJunctionTable(rel, entities);
-      junctionTables.push(junctionTable);
+      const junctionTable = createJunctionTable(rel, entities, nodes, edges);
+      if (junctionTable) {
+        junctionTables.push(junctionTable);
+      }
     } else {
       // Add FK to the appropriate table
-      tables = handleOneToManyOrOneToOne(rel, tables, entities);
+      tables = handleOneToManyOrOneToOne(rel, tables, entities, nodes, edges);
     }
   });
   
@@ -320,7 +341,7 @@ export const convertERDtoDSD = (nodes) => {
   allTables.forEach(table => {
     const foreignKeys = table.data.attributes.filter(attr => attr.isForeignKey);
 
-    // 🔧 Group FKs by foreignKeyGroup to create one relationship per group
+    // Group FKs by foreignKeyGroup to create one relationship per group
     const processedGroups = new Set();
 
     foreignKeys.forEach(fk => {
@@ -348,10 +369,10 @@ export const convertERDtoDSD = (nodes) => {
           target: targetTable.id,
           data: {
             foreignKeyGroup: fk.foreignKeyGroup,
-            foreignKeyNames: sortedGroupFks.map(f => f.name), // 🔧 All column names
-            referencedColumns: fk.referencedColumns || [], // 🔧 Save the referenced columns
+            foreignKeyNames: sortedGroupFks.map(f => f.name),
+            referencedColumns: fk.referencedColumns || [],
             isNullable: fk.isNullable || false,
-            isComposite: groupFks.length > 1 // 🔧 Mark as composite FK
+            isComposite: groupFks.length > 1
           }
         });
       } else {
@@ -381,9 +402,10 @@ export const convertERDtoDSD = (nodes) => {
 /**
  * Export the diagram to JSON format for download
  * @param {Array} nodes - Array of nodes
+ * @param {Array} edges - Array of edges
  * @returns {String} - JSON string
  */
-export const exportDSDtoJSON = (nodes) => {
-  const dsd = convertERDtoDSD(nodes);
+export const exportDSDtoJSON = (nodes, edges) => {
+  const dsd = convertERDtoDSD(nodes, edges);
   return JSON.stringify(dsd, null, 2);
 };

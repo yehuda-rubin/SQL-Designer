@@ -1,9 +1,14 @@
 import React, { memo } from 'react';
 import { Handle, Position } from 'reactflow';
-import { Link, Trash2, Key } from 'lucide-react';
+import { Link, Trash2 } from 'lucide-react';
 
+/**
+ * RelationshipNode - Ullman's notation (simplified)
+ * Only displays the relationship name in a diamond
+ * Attributes are separate AttributeNode instances connected with edges
+ */
 const RelationshipNode = ({ data, selected }) => {
-  const { name, attributes = [], onDelete, onEdit } = data;
+  const { name, onDelete, onEdit } = data;
 
   return (
     <div className="relative" onDoubleClick={onEdit}>
@@ -15,7 +20,7 @@ const RelationshipNode = ({ data, selected }) => {
 
       {/* Diamond shape - Relationship */}
       <div
-        className={`relative transform rotate-45 min-w-[140px] min-h-[140px] transition-all duration-200 ${
+        className={`relative transform rotate-45 min-w-[120px] min-h-[120px] transition-all duration-200 ${
           selected ? 'shadow-2xl scale-110' : 'shadow-lg'
         }`}
         style={{
@@ -48,50 +53,19 @@ const RelationshipNode = ({ data, selected }) => {
           style={{ transformOrigin: 'center' }}
         >
           {/* Icon */}
-          <Link className="w-6 h-6 text-white mb-2" />
+          <Link className="w-6 h-6 text-white mb-1" />
           
           {/* Relationship name */}
           <span className="font-bold text-white text-center text-sm leading-tight max-w-full overflow-hidden">
-            {name || 'New Relationship'}
+            {name || 'יחס חדש'}
           </span>
 
-          {/* Attributes count */}
-          {attributes.length > 0 && (
-            <div className="mt-2 bg-white/20 backdrop-blur-sm px-2 py-1 rounded text-xs text-white">
-              {attributes.length} Attributes
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Attributes section below the diamond */}
-      {attributes.length > 0 && (
-        <div className="absolute top-[160px] left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-md border-2 border-purple-200 p-2 min-w-[180px] z-20">
-          <div className="space-y-1">
-            {attributes.slice(0, 3).map((attr, index) => (
-              <div
-                key={index}
-                className="px-2 py-1 rounded bg-purple-50 border border-purple-100 flex items-center justify-between text-xs"
-              >
-                <div className="flex items-center gap-1">
-                  {attr.isPrimaryKey && <Key className="w-3 h-3 text-yellow-600" />}
-                  <span className={attr.isPrimaryKey ? 'font-semibold' : ''}>
-                    {attr.name}
-                  </span>
-                </div>
-                {attr.type && (
-                  <span className="text-gray-500">{attr.type}</span>
-                )}
-              </div>
-            ))}
-            {attributes.length > 3 && (
-              <div className="text-center text-gray-400 text-xs">
-                +{attributes.length - 3} more...
-              </div>
-            )}
+          {/* Hint text */}
+          <div className="mt-2 text-xs text-white/80 text-center">
+            הוסף תכונות
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
